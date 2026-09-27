@@ -338,10 +338,23 @@ def win_focus(app):
                 target_title = w["title"]
                 break
 
-    # 3. Match by process name (prefer newest PID if multiple exist)
+    # 3. Match by process name (prefer newest process by creation time)
     if not target_hwnd:
         procs = _win_match_procs(app)
-        pids = sorted([p["pid"] for p in procs], reverse=True)
+        
+        def _get_create_time(pid):
+            h = _kernel32.OpenProcess(0x1000, False, pid)
+            if not h:
+                return 0
+            c = wintypes.FILETIME()
+            e = wintypes.FILETIME()
+            k = wintypes.FILETIME()
+            u = wintypes.FILETIME()
+            _kernel32.GetProcessTimes(h, ctypes.byref(c), ctypes.byref(e), ctypes.byref(k), ctypes.byref(u))
+            _kernel32.CloseHandle(h)
+            return (c.dwHighDateTime << 32) | c.dwLowDateTime
+
+        pids = sorted([p["pid"] for p in procs], key=_get_create_time, reverse=True)
         for target_p in pids:
             for w in windows:
                 if w["pid"] == target_p:
@@ -391,15 +404,26 @@ def win_focus(app):
 
 def win_quit(app, force):
     app_lower = (app[:-4] if app.lower().endswith(".exe") else app).lower()
-    procs = _win_match_procs(app)
-    if not procs:
+    windows = _win_visible_windows()
+
+    if app.isdigit():
+        pids = [int(app)]
+    else:
+        title_matches = [w for w in windows if app_lower in w["title"].lower()]
+        # If targeting a specific document/window title (not just generic app name like 'notepad')
+        if title_matches and len(app) >= 3 and not _win_match_procs(app):
+            pids = [w["pid"] for w in title_matches]
+        else:
+            procs = _win_match_procs(app)
+            pids = [p["pid"] for p in procs]
+            if not pids and title_matches:
+                pids = [w["pid"] for w in title_matches]
+
+    if not pids:
         return emit({"ok": True, "action": "quit", "app": app,
                      "evidence": {"running": False, "method": "already-closed"}})
 
-    pids = [p["pid"] for p in procs]
-
     if not force:
-        windows = _win_visible_windows()
         target_hwnds = [w["hwnd"] for w in windows if w["pid"] in pids]
         if not target_hwnds:
             target_hwnds = [w["hwnd"] for w in windows if app_lower in w["title"].lower()]
