@@ -88,6 +88,41 @@ if OS == "Windows":
     _user32.EnumWindows.argtypes = [_WNDENUMPROC, wintypes.LPARAM]
     _user32.EnumDesktopsW.argtypes = [wintypes.HANDLE, _DESKTOPENUMPROC, wintypes.LPARAM]
 
+    class _STARTUPINFOW(ctypes.Structure):
+        _fields_ = [
+            ("cb", wintypes.DWORD),
+            ("lpReserved", wintypes.LPWSTR),
+            ("lpDesktop", wintypes.LPWSTR),
+            ("lpTitle", wintypes.LPWSTR),
+            ("dwX", wintypes.DWORD),
+            ("dwY", wintypes.DWORD),
+            ("dwXSize", wintypes.DWORD),
+            ("dwYSize", wintypes.DWORD),
+            ("dwXCountChars", wintypes.DWORD),
+            ("dwYCountChars", wintypes.DWORD),
+            ("dwFillAttribute", wintypes.DWORD),
+            ("dwFlags", wintypes.DWORD),
+            ("wShowWindow", wintypes.WORD),
+            ("cbReserved2", wintypes.WORD),
+            ("lpReserved2", ctypes.c_void_p),
+            ("hStdInput", wintypes.HANDLE),
+            ("hStdOutput", wintypes.HANDLE),
+            ("hStdError", wintypes.HANDLE),
+        ]
+
+    class _PROCESS_INFORMATION(ctypes.Structure):
+        _fields_ = [
+            ("hProcess", wintypes.HANDLE),
+            ("hThread", wintypes.HANDLE),
+            ("dwProcessId", wintypes.DWORD),
+            ("dwThreadId", wintypes.DWORD),
+        ]
+
+    _user32.SetThreadDesktop.argtypes = [wintypes.HANDLE]
+    _h_default_desk = _user32.OpenDesktopW("Default", 0, False, 0x01FF)
+    if _h_default_desk:
+        _user32.SetThreadDesktop(_h_default_desk)
+
 
 def _ps(script):
     return run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script])
@@ -186,6 +221,24 @@ def _win_match_procs(app):
 
 def win_open(app, args):
     binary = shutil.which(app) or shutil.which(f"{app}.exe") or app
+    cmd_line = subprocess.list2cmdline([binary] + args)
+
+    # Launch onto user interactive desktop WinSta0\Default
+    si = _STARTUPINFOW()
+    si.cb = ctypes.sizeof(_STARTUPINFOW)
+    si.lpDesktop = "WinSta0\\Default"
+    pi = _PROCESS_INFORMATION()
+
+    res = _kernel32.CreateProcessW(
+        None, cmd_line, None, None, False, 0, None, None,
+        ctypes.byref(si), ctypes.byref(pi)
+    )
+    if res:
+        pid = pi.dwProcessId
+        _kernel32.CloseHandle(pi.hProcess)
+        _kernel32.CloseHandle(pi.hThread)
+        return emit({"ok": True, "action": "open", "app": app, "evidence": {"pid": pid}})
+
     try:
         p = subprocess.Popen(
             [binary] + args,
@@ -280,7 +333,20 @@ def win_focus(app):
     if not target_hwnd:
         return fail("focus", f"no visible window for '{app}'")
 
+    # Bypass Windows foreground lock timeout (standard Win32 automation trick)
+    _user32.keybd_event(0x12, 0, 0, 0)  # ALT down
+    _user32.keybd_event(0x12, 0, 2, 0)  # ALT up
+
     _user32.ShowWindow(target_hwnd, SW_RESTORE)
+
+    HWND_TOPMOST = -1
+    HWND_NOTOPMOST = -2
+    SWP_NOMOVE = 0x0002
+    SWP_NOSIZE = 0x0001
+    SWP_SHOWWINDOW = 0x0040
+    _user32.SetWindowPos(target_hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
+    _user32.SetWindowPos(target_hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
+
     fore_wnd = _user32.GetForegroundWindow()
     fore_tid = _user32.GetWindowThreadProcessId(fore_wnd, None)
     cur_tid = _kernel32.GetCurrentThreadId()
