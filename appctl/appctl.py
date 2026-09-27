@@ -313,21 +313,43 @@ def win_list():
 
 def win_focus(app):
     app_lower = (app[:-4] if app.lower().endswith(".exe") else app).lower()
-    procs = _win_match_procs(app)
-    pids = {p["pid"] for p in procs}
-
-    target_hwnd = None
     windows = _win_visible_windows()
 
-    for w in windows:
-        if w["pid"] in pids:
-            target_hwnd = w["hwnd"]
-            break
+    target_hwnd = None
+    target_pid = None
+    target_title = None
 
-    if not target_hwnd:
+    # 1. Match by numeric PID
+    if app.isdigit():
+        pid_int = int(app)
+        for w in windows:
+            if w["pid"] == pid_int:
+                target_hwnd = w["hwnd"]
+                target_pid = w["pid"]
+                target_title = w["title"]
+                break
+
+    # 2. Match by window title substring (more specific than app name)
+    if not target_hwnd and len(app) >= 2:
         for w in windows:
             if app_lower in w["title"].lower():
                 target_hwnd = w["hwnd"]
+                target_pid = w["pid"]
+                target_title = w["title"]
+                break
+
+    # 3. Match by process name (prefer newest PID if multiple exist)
+    if not target_hwnd:
+        procs = _win_match_procs(app)
+        pids = sorted([p["pid"] for p in procs], reverse=True)
+        for target_p in pids:
+            for w in windows:
+                if w["pid"] == target_p:
+                    target_hwnd = w["hwnd"]
+                    target_pid = w["pid"]
+                    target_title = w["title"]
+                    break
+            if target_hwnd:
                 break
 
     if not target_hwnd:
@@ -357,8 +379,14 @@ def win_focus(app):
     if fore_tid != cur_tid:
         _user32.AttachThreadInput(cur_tid, fore_tid, False)
 
+    evidence = {"foreground": True}
+    if target_pid:
+        evidence["pid"] = target_pid
+    if target_title:
+        evidence["window"] = target_title
+
     return emit({"ok": True, "action": "focus", "app": app,
-                 "evidence": {"foreground": True}})
+                 "evidence": evidence})
 
 
 def win_quit(app, force):
@@ -376,8 +404,11 @@ def win_quit(app, force):
         if not target_hwnds:
             target_hwnds = [w["hwnd"] for w in windows if app_lower in w["title"].lower()]
 
+        WM_SYSCOMMAND = 0x0112
+        SC_CLOSE = 0xF060
         for hwnd in target_hwnds:
             _user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
+            _user32.PostMessageW(hwnd, WM_SYSCOMMAND, SC_CLOSE, 0)
 
         for _ in range(15):
             time.sleep(0.2)
