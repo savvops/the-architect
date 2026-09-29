@@ -70,6 +70,30 @@ except ImportError:
     except ImportError:
         LocalRouter = run_benchmark = None
 
+try:
+    from appctl.browser import (
+        detect_browsers,
+        fork_browser,
+        list_browser_workers,
+        destroy_browser_worker,
+        browser_status,
+        CDPClient,
+        load_cookie_file,
+    )
+except ImportError:
+    try:
+        from browser import (
+            detect_browsers,
+            fork_browser,
+            list_browser_workers,
+            destroy_browser_worker,
+            browser_status,
+            CDPClient,
+            load_cookie_file,
+        )
+    except ImportError:
+        detect_browsers = fork_browser = list_browser_workers = destroy_browser_worker = browser_status = CDPClient = load_cookie_file = None
+
 OS = platform.system()  # Windows | Darwin | Linux
 
 
@@ -1684,6 +1708,33 @@ def run_exec(tool_id, args_json_str=None):
             return fail("exec", "router module not available")
         rep = run_benchmark()
         return emit(rep, code=0 if rep.get("ok") else 1)
+    elif action == "browser_fork":
+        if not fork_browser:
+            return fail("exec", "browser module not available")
+        res = fork_browser(
+            browser=validated_args.get("browser"),
+            url=validated_args.get("url"),
+            headless=validated_args.get("headless", False),
+            port=validated_args.get("port"),
+            cookie_file=validated_args.get("cookie_file"),
+            copy_profile=validated_args.get("copy_profile", True),
+        )
+        return emit(res, code=0 if res.get("ok") else 1)
+    elif action == "browser_list":
+        if not list_browser_workers:
+            return fail("exec", "browser module not available")
+        res = list_browser_workers()
+        return emit(res, code=0 if res.get("ok") else 1)
+    elif action == "browser_destroy":
+        if not destroy_browser_worker:
+            return fail("exec", "browser module not available")
+        res = destroy_browser_worker(validated_args["worker_id"])
+        return emit(res, code=0 if res.get("ok") else 1)
+    elif action == "browser_status":
+        if not browser_status:
+            return fail("exec", "browser module not available")
+        res = browser_status()
+        return emit(res, code=0 if res.get("ok") else 1)
     else:
         return fail("exec", f"unknown action '{action}' for tool '{tool_id}'")
 
@@ -1787,6 +1838,24 @@ def main():
 
     p = sub.add_parser("benchmark", help="run the sub-1GB local router benchmark")
     p.add_argument("--json", action="store_true", help="output JSON")
+
+    p_b = sub.add_parser("browser", help="ephemeral browser worker & profile-forking adapter")
+    b_sub = p_b.add_subparsers(dest="browser_action", required=True)
+
+    p_bfork = b_sub.add_parser("fork", help="spawn ephemeral browser worker with isolated profile & credentials")
+    p_bfork.add_argument("--browser", default=None, help="browser flavor: brave, chrome, chromium, edge, firefox")
+    p_bfork.add_argument("--url", default=None, help="initial URL to navigate to")
+    p_bfork.add_argument("--headless", action="store_true", help="run in background headless mode")
+    p_bfork.add_argument("--port", type=int, default=None, help="remote CDP debugging port")
+    p_bfork.add_argument("--cookie-file", default=None, help="path to JSON cookie export (e.g. sockmusegoogle.json)")
+    p_bfork.add_argument("--no-copy-profile", action="store_true", help="skip copying master profile state")
+
+    b_sub.add_parser("list", help="list active ephemeral browser workers")
+
+    p_bdestroy = b_sub.add_parser("destroy", help="terminate worker and purge temporary profile directory")
+    p_bdestroy.add_argument("worker_id", help="worker ID, PID, or 'all'")
+
+    b_sub.add_parser("status", help="check installed browsers and SAO bridge status")
 
     a = ap.parse_args()
 
@@ -1903,6 +1972,32 @@ def main():
         rep = run_benchmark()
         emit(rep, code=0 if rep.get("ok") else 1)
         return
+    elif a.action == "browser":
+        if not fork_browser:
+            fail("browser", "browser module not available")
+        if a.browser_action == "fork":
+            res = fork_browser(
+                browser=a.browser,
+                url=a.url,
+                headless=a.headless,
+                port=a.port,
+                cookie_file=a.cookie_file,
+                copy_profile=not a.no_copy_profile,
+            )
+            emit(res, code=0 if res.get("ok") else 1)
+            return
+        elif a.browser_action == "list":
+            res = list_browser_workers()
+            emit(res, code=0 if res.get("ok") else 1)
+            return
+        elif a.browser_action == "destroy":
+            res = destroy_browser_worker(a.worker_id)
+            emit(res, code=0 if res.get("ok") else 1)
+            return
+        elif a.browser_action == "status":
+            res = browser_status()
+            emit(res, code=0 if res.get("ok") else 1)
+            return
 
 
     if a.action == "list":

@@ -529,6 +529,85 @@ SEED_REGISTRY: List[Dict[str, Any]] = [
         "expect": {"postconditions": ["display_cleared"]},
         "risk": "low"
     },
+    # ----------------------------------------------------------- Browser Tools -
+    {
+        "tool_id": "browser.fork",
+        "app": "browser",
+        "action": "browser_fork",
+        "inputs": {
+            "type": "object",
+            "properties": {
+                "browser": {
+                    "type": "string",
+                    "enum": ["brave", "chrome", "chromium", "edge", "firefox"],
+                    "description": "Browser flavor (brave, chrome, chromium, edge, firefox)",
+                },
+                "url": {
+                    "type": "string",
+                    "description": "Initial target URL",
+                },
+                "headless": {
+                    "type": "boolean",
+                    "description": "Launch headless in background",
+                },
+                "port": {
+                    "type": "integer",
+                    "minimum": 1024,
+                    "maximum": 65535,
+                    "description": "CDP remote debugging port",
+                },
+                "cookie_file": {
+                    "type": "string",
+                    "description": "Path to JSON cookie file to inject",
+                },
+                "copy_profile": {
+                    "type": "boolean",
+                    "description": "Whether to copy master profile state",
+                },
+            },
+        },
+        "expect": {"postconditions": ["ephemeral_process_started", "isolated_profile_created"]},
+        "risk": "medium",
+    },
+    {
+        "tool_id": "browser.list",
+        "app": "browser",
+        "action": "browser_list",
+        "inputs": {
+            "type": "object",
+            "properties": {},
+        },
+        "expect": {"postconditions": ["workers_enumerated"]},
+        "risk": "low",
+    },
+    {
+        "tool_id": "browser.destroy",
+        "app": "browser",
+        "action": "browser_destroy",
+        "inputs": {
+            "type": "object",
+            "properties": {
+                "worker_id": {
+                    "type": "string",
+                    "description": "Worker ID, PID, or 'all'",
+                },
+            },
+            "required": ["worker_id"],
+        },
+        "expect": {"postconditions": ["worker_terminated", "profile_purged"]},
+        "risk": "medium",
+    },
+    {
+        "tool_id": "browser.status",
+        "app": "browser",
+        "action": "browser_status",
+        "inputs": {
+            "type": "object",
+            "properties": {},
+        },
+        "expect": {"postconditions": ["browser_status_reported"]},
+        "risk": "low",
+    },
 ]
 
 

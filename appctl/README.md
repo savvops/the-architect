@@ -75,6 +75,19 @@ Local System 1 routing engine (<35MB RAM, <1ms latency):
 - **`route`**: Maps natural language task intent to optimal control tier (S -> A -> B -> C -> D), registered tool, and validated arguments.
 - **`benchmark`**: Evaluates standardized 20-task suite, generating coverage scorecard metrics.
 
+### Ephemeral Browser Workers & Profile-Forking Adapter (Consolidated Browser Architecture)
+```bash
+appctl browser fork [--browser BRAVE|CHROME|FIREFOX] [--url URL] [--headless] [--cookie-file FILE]
+appctl browser list
+appctl browser destroy <worker_id|all>
+appctl browser status
+```
+Enables 1 shared canonical browser for the human owner while allowing AI agents to spawn and destroy N isolated, credentialed temporary browser copies on demand:
+- **`fork`**: Clones non-locked profile items (`Local State`, `Preferences`, `Bookmarks`, `Login Data`), assigns an isolated `%TEMP%\architect_browser\<worker_id>` directory, launches detached browser with auto-allocated `--remote-debugging-port`, and dynamically injects pre-authenticated cookies via pure stdlib CDP WebSocket (`Network.setCookies`).
+- **`list`**: Inspects running workers, verifies PID liveness, and auto-prunes dead processes.
+- **`destroy`**: Terminates the worker process tree (`taskkill /T /F`) and purges the temporary user-data directory from disk with zero residual trace.
+- **`status`**: Queries local browser readiness (Brave, Chrome, Chromium, Firefox, Edge) and checks connectivity to remote SAO browser bridges (`savv-spine:6092`).
+
 ## Verifier Contract
 
 Every command exits with `0` (ok) or `1` (failure) and prints typed JSON on stdout conforming to The Architect verifier contract:

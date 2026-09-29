@@ -51,6 +51,7 @@ an after, and evidence.
 4. [x] Windows/macOS/Linux accessibility adapters (Windows UIA desktop DOM)
 5. [x] Sub-1GB local router benchmark (lane choice, tool selection, argument filling — never raw shell or invented coordinates)
 6. [x] Local OCR + visual grounding fallback (offline Windows.Media.Ocr / visual grounding)
+7. [x] Ephemeral browser worker & profile-forking adapter (consolidated 1-owner shared browser + N temporary credentialed copies)
 
 ## Coverage scorecard (Benchmark Results)
 
