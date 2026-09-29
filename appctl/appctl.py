@@ -79,6 +79,7 @@ try:
         browser_status,
         bridge_browser,
         SAOBrowserBridge,
+        get_unified_browser_url,
         CDPClient,
         load_cookie_file,
     )
@@ -92,11 +93,12 @@ except ImportError:
             browser_status,
             bridge_browser,
             SAOBrowserBridge,
+            get_unified_browser_url,
             CDPClient,
             load_cookie_file,
         )
     except ImportError:
-        detect_browsers = fork_browser = list_browser_workers = destroy_browser_worker = browser_status = bridge_browser = SAOBrowserBridge = CDPClient = load_cookie_file = None
+        detect_browsers = fork_browser = list_browser_workers = destroy_browser_worker = browser_status = bridge_browser = SAOBrowserBridge = get_unified_browser_url = CDPClient = load_cookie_file = None
 
 OS = platform.system()  # Windows | Darwin | Linux
 
@@ -1750,6 +1752,11 @@ def run_exec(tool_id, args_json_str=None):
             sao_url=validated_args.get("sao_url"),
         )
         return emit(res, code=0 if res.get("ok") else 1)
+    elif action == "browser_url":
+        if not get_unified_browser_url:
+            return fail("exec", "browser module not available")
+        res = get_unified_browser_url(sao_url=validated_args.get("sao_url"))
+        return emit(res, code=0 if res.get("ok") else 1)
     else:
         return fail("exec", f"unknown action '{action}' for tool '{tool_id}'")
 
@@ -1878,6 +1885,9 @@ def main():
     p_bbridge.add_argument("--headless", action="store_true", default=True, help="run in background headless mode")
     p_bbridge.add_argument("--no-ephemeral", action="store_true", help="do not prefer ephemeral worker")
     p_bbridge.add_argument("--sao-url", default=None, help="custom SAO browser URL")
+
+    p_burl = b_sub.add_parser("url", help="display the unified browser WebRTC & CDP URLs")
+    p_burl.add_argument("--sao-url", default=None, help="custom SAO browser URL")
 
     a = ap.parse_args()
 
@@ -2030,6 +2040,12 @@ def main():
                 prefer_ephemeral=not a.no_ephemeral,
                 sao_url=a.sao_url,
             )
+            emit(res, code=0 if res.get("ok") else 1)
+            return
+        elif a.browser_action == "url":
+            if not get_unified_browser_url:
+                fail("browser", "browser module not available")
+            res = get_unified_browser_url(sao_url=a.sao_url)
             emit(res, code=0 if res.get("ok") else 1)
             return
 

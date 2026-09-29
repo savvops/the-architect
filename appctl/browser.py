@@ -750,6 +750,25 @@ def browser_status() -> Dict[str, Any]:
     }
 
 
+def get_unified_browser_url(sao_url: Optional[str] = None) -> Dict[str, Any]:
+    """Return the canonical unified browser URL and status for Master Control and agents."""
+    url = (sao_url or SAO_BROWSER_URL).rstrip("/")
+    status = browser_status()
+    sao_state = status.get("evidence", {}).get("sao_bridge", {})
+    return {
+        "ok": True,
+        "action": "browser.url",
+        "evidence": {
+            "unified_browser_url": f"{url}/",
+            "webrtc_stream_url": f"{url}/",
+            "sao_control_status_url": f"{url}/sao-control/status",
+            "cdp_base_port": 9222,
+            "bridge_connected": sao_state.get("available", False),
+            "owner_state": sao_state.get("state", {}),
+        },
+    }
+
+
 class SAOBrowserBridge:
     """Bridge adapter connecting remote SAO Browser (savv-spine:6092) with Architect's ephemeral workers."""
 

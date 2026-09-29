@@ -19,6 +19,7 @@ from appctl.browser import (
     browser_status,
     bridge_browser,
     SAOBrowserBridge,
+    get_unified_browser_url,
     destroy_browser_worker,
     detect_browsers,
     find_free_port,
@@ -320,6 +321,39 @@ class TestSAOBrowserBridge(unittest.TestCase):
         worker_id = data.get("evidence", {}).get("worker", {}).get("worker_id")
         if worker_id:
             destroy_browser_worker(worker_id)
+
+    def test_unified_browser_url_function(self):
+        res = get_unified_browser_url()
+        self.assertTrue(res.get("ok"))
+        self.assertEqual(res.get("action"), "browser.url")
+        ev = res.get("evidence", {})
+        self.assertIn("unified_browser_url", ev)
+        self.assertIn("savv-spine", ev["unified_browser_url"])
+
+    def test_cli_browser_url(self):
+        res = subprocess.run(
+            [sys.executable, APPCTL_PY, "browser", "url"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        self.assertEqual(res.returncode, 0, f"CLI stderr: {res.stderr}")
+        data = json.loads(res.stdout)
+        self.assertTrue(data.get("ok"))
+        self.assertEqual(data.get("action"), "browser.url")
+        self.assertIn("unified_browser_url", data.get("evidence", {}))
+
+    def test_cli_exec_browser_url(self):
+        res = subprocess.run(
+            [sys.executable, APPCTL_PY, "exec", "browser.url"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        self.assertEqual(res.returncode, 0, f"CLI stderr: {res.stderr}")
+        data = json.loads(res.stdout)
+        self.assertTrue(data.get("ok"))
+        self.assertEqual(data.get("action"), "browser.url")
 
 
 if __name__ == "__main__":

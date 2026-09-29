@@ -640,6 +640,22 @@ SEED_REGISTRY: List[Dict[str, Any]] = [
         "expect": {"postconditions": ["bridge_evaluated", "worker_dispatched"]},
         "risk": "medium",
     },
+    {
+        "tool_id": "browser.url",
+        "app": "browser",
+        "action": "browser_url",
+        "inputs": {
+            "type": "object",
+            "properties": {
+                "sao_url": {
+                    "type": "string",
+                    "description": "Custom SAO Browser endpoint URL (default: savv-spine:6092)",
+                },
+            },
+        },
+        "expect": {"postconditions": ["unified_url_retrieved"]},
+        "risk": "low",
+    },
 ]
 
 
