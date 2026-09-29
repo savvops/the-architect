@@ -748,3 +748,93 @@ def browser_status() -> Dict[str, Any]:
             "sao_bridge": sao_status,
         },
     }
+
+
+class SAOBrowserBridge:
+    """Bridge adapter connecting remote SAO Browser (savv-spine:6092) with Architect's ephemeral workers."""
+
+    def __init__(self, sao_url: str = SAO_BROWSER_URL):
+        self.sao_url = sao_url.rstrip("/")
+        import ssl
+        self.ctx = ssl._create_unverified_context()
+
+    def get_status(self, timeout: float = 3.0) -> Dict[str, Any]:
+        """Fetch remote SAO Browser state."""
+        try:
+            req = urllib.request.Request(
+                f"{self.sao_url}/sao-control/status",
+                headers={"User-Agent": "Architect-Bridge/1.0", "X-SAO-Browser": "1"},
+            )
+            with urllib.request.urlopen(req, timeout=timeout, context=self.ctx) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                return {"available": True, "state": data}
+        except Exception as e:
+            return {"available": False, "error": str(e)}
+
+    def route_request(
+        self,
+        url: Optional[str] = None,
+        cookie_file: Optional[str] = None,
+        headless: bool = True,
+        prefer_ephemeral: bool = True,
+    ) -> Dict[str, Any]:
+        """Decide whether to execute via local ephemeral worker or report SAO availability.
+
+        If SAO Browser is paused by owner, busy, or prefer_ephemeral is True:
+        Automatically offloads the agent request to an ephemeral Architect browser worker,
+        guaranteeing the owner's session is never interrupted and eliminating queue wait time.
+        """
+        sao_res = self.get_status()
+        sao_state = sao_res.get("state", {}) if sao_res.get("available") else {}
+
+        is_paused = sao_state.get("paused", False)
+        is_busy = sao_state.get("busy", False)
+        queue_len = len(sao_state.get("queue", []))
+        holder = sao_state.get("holder")
+
+        # Determine routing reason
+        reason = "concurrency_isolation"
+        if not sao_res.get("available"):
+            reason = "sao_offline_fallback"
+        elif is_paused:
+            reason = "owner_takeover_active"
+        elif is_busy or queue_len > 0:
+            reason = f"sao_busy_holder_{holder}"
+
+        # Fork ephemeral worker
+        fork_res = fork_browser(
+            url=url,
+            cookie_file=cookie_file,
+            headless=headless,
+        )
+
+        return {
+            "ok": fork_res.get("ok", False),
+            "action": "browser.bridge",
+            "evidence": {
+                "bridge_mode": "offload_ephemeral",
+                "offload_reason": reason,
+                "sao_status": sao_res,
+                "worker": fork_res.get("evidence"),
+                "isolated": True,
+                "owner_viewport_protected": True,
+            },
+        }
+
+
+def bridge_browser(
+    url: Optional[str] = None,
+    cookie_file: Optional[str] = None,
+    headless: bool = True,
+    prefer_ephemeral: bool = True,
+    sao_url: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Bridge remote SAO Browser requests to Architect's ephemeral worker infrastructure."""
+    bridge = SAOBrowserBridge(sao_url=sao_url or SAO_BROWSER_URL)
+    return bridge.route_request(
+        url=url,
+        cookie_file=cookie_file,
+        headless=headless,
+        prefer_ephemeral=prefer_ephemeral,
+    )
+

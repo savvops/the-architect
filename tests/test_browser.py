@@ -17,6 +17,8 @@ from appctl.browser import (
     BASE_WORKER_DIR,
     CDPClient,
     browser_status,
+    bridge_browser,
+    SAOBrowserBridge,
     destroy_browser_worker,
     detect_browsers,
     find_free_port,
@@ -268,5 +270,58 @@ class TestBrowserCLI(unittest.TestCase):
         self.assertEqual(data.get("action"), "browser.list")
 
 
+class TestSAOBrowserBridge(unittest.TestCase):
+    def test_bridge_tool_in_registry(self):
+        tool_ids = {t["tool_id"] for t in registry.list_tools()}
+        self.assertIn("browser.bridge", tool_ids)
+
+        tool, args = registry.validate_and_prepare("browser.bridge", {
+            "url": "https://example.com",
+            "headless": True,
+            "prefer_ephemeral": True,
+        })
+        self.assertEqual(args["url"], "https://example.com")
+        self.assertTrue(args["headless"])
+
+    def test_sao_bridge_get_status(self):
+        bridge = SAOBrowserBridge()
+        res = bridge.get_status()
+        self.assertIsInstance(res, dict)
+        self.assertIn("available", res)
+        if res.get("available"):
+            self.assertIn("state", res)
+            self.assertIn("paused", res["state"])
+            self.assertIn("queue", res["state"])
+
+    def test_sao_bridge_route_ephemeral(self):
+        bridge = SAOBrowserBridge()
+        res = bridge.route_request(headless=True)
+        self.assertTrue(res.get("ok"))
+        self.assertEqual(res.get("action"), "browser.bridge")
+        ev = res.get("evidence", {})
+        self.assertEqual(ev.get("bridge_mode"), "offload_ephemeral")
+        self.assertTrue(ev.get("owner_viewport_protected"))
+        worker_id = ev.get("worker", {}).get("worker_id")
+        if worker_id:
+            destroy_browser_worker(worker_id)
+
+    def test_cli_browser_bridge(self):
+        res = subprocess.run(
+            [sys.executable, APPCTL_PY, "browser", "bridge"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        self.assertEqual(res.returncode, 0, f"CLI stderr: {res.stderr}")
+        data = json.loads(res.stdout)
+        self.assertTrue(data.get("ok"))
+        self.assertEqual(data.get("action"), "browser.bridge")
+        self.assertTrue(data.get("evidence", {}).get("owner_viewport_protected"))
+        worker_id = data.get("evidence", {}).get("worker", {}).get("worker_id")
+        if worker_id:
+            destroy_browser_worker(worker_id)
+
+
 if __name__ == "__main__":
     unittest.main()
+

@@ -81,12 +81,14 @@ appctl browser fork [--browser BRAVE|CHROME|FIREFOX] [--url URL] [--headless] [-
 appctl browser list
 appctl browser destroy <worker_id|all>
 appctl browser status
+appctl browser bridge [--url URL] [--cookie-file FILE] [--headless] [--no-ephemeral]
 ```
 Enables 1 shared canonical browser for the human owner while allowing AI agents to spawn and destroy N isolated, credentialed temporary browser copies on demand:
 - **`fork`**: Clones non-locked profile items (`Local State`, `Preferences`, `Bookmarks`, `Login Data`), assigns an isolated `%TEMP%\architect_browser\<worker_id>` directory, launches detached browser with auto-allocated `--remote-debugging-port`, and dynamically injects pre-authenticated cookies via pure stdlib CDP WebSocket (`Network.setCookies`).
 - **`list`**: Inspects running workers, verifies PID liveness, and auto-prunes dead processes.
 - **`destroy`**: Terminates the worker process tree (`taskkill /T /F`) and purges the temporary user-data directory from disk with zero residual trace.
 - **`status`**: Queries local browser readiness (Brave, Chrome, Chromium, Firefox, Edge) and checks connectivity to remote SAO browser bridges (`savv-spine:6092`).
+- **`bridge`**: Connects remote SAO Browser (`savv-spine:6092`) with Architect's ephemeral worker infrastructure. Automatically inspects owner state (`paused: true` / "Take over") and queue load, dynamically offloading AI browser requests into isolated background workers so the human owner's viewport is never hijacked or disrupted.
 
 ## Verifier Contract
 

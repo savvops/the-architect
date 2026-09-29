@@ -77,6 +77,8 @@ try:
         list_browser_workers,
         destroy_browser_worker,
         browser_status,
+        bridge_browser,
+        SAOBrowserBridge,
         CDPClient,
         load_cookie_file,
     )
@@ -88,11 +90,13 @@ except ImportError:
             list_browser_workers,
             destroy_browser_worker,
             browser_status,
+            bridge_browser,
+            SAOBrowserBridge,
             CDPClient,
             load_cookie_file,
         )
     except ImportError:
-        detect_browsers = fork_browser = list_browser_workers = destroy_browser_worker = browser_status = CDPClient = load_cookie_file = None
+        detect_browsers = fork_browser = list_browser_workers = destroy_browser_worker = browser_status = bridge_browser = SAOBrowserBridge = CDPClient = load_cookie_file = None
 
 OS = platform.system()  # Windows | Darwin | Linux
 
@@ -1735,6 +1739,17 @@ def run_exec(tool_id, args_json_str=None):
             return fail("exec", "browser module not available")
         res = browser_status()
         return emit(res, code=0 if res.get("ok") else 1)
+    elif action == "browser_bridge":
+        if not bridge_browser:
+            return fail("exec", "browser module not available")
+        res = bridge_browser(
+            url=validated_args.get("url"),
+            cookie_file=validated_args.get("cookie_file"),
+            headless=validated_args.get("headless", True),
+            prefer_ephemeral=validated_args.get("prefer_ephemeral", True),
+            sao_url=validated_args.get("sao_url"),
+        )
+        return emit(res, code=0 if res.get("ok") else 1)
     else:
         return fail("exec", f"unknown action '{action}' for tool '{tool_id}'")
 
@@ -1856,6 +1871,13 @@ def main():
     p_bdestroy.add_argument("worker_id", help="worker ID, PID, or 'all'")
 
     b_sub.add_parser("status", help="check installed browsers and SAO bridge status")
+
+    p_bbridge = b_sub.add_parser("bridge", help="route browser request via SAO bridge or auto-offload to ephemeral worker")
+    p_bbridge.add_argument("--url", default=None, help="target URL")
+    p_bbridge.add_argument("--cookie-file", default=None, help="path to cookie export file to inject")
+    p_bbridge.add_argument("--headless", action="store_true", default=True, help="run in background headless mode")
+    p_bbridge.add_argument("--no-ephemeral", action="store_true", help="do not prefer ephemeral worker")
+    p_bbridge.add_argument("--sao-url", default=None, help="custom SAO browser URL")
 
     a = ap.parse_args()
 
@@ -1996,6 +2018,18 @@ def main():
             return
         elif a.browser_action == "status":
             res = browser_status()
+            emit(res, code=0 if res.get("ok") else 1)
+            return
+        elif a.browser_action == "bridge":
+            if not bridge_browser:
+                fail("browser", "bridge module not available")
+            res = bridge_browser(
+                url=a.url,
+                cookie_file=a.cookie_file,
+                headless=a.headless,
+                prefer_ephemeral=not a.no_ephemeral,
+                sao_url=a.sao_url,
+            )
             emit(res, code=0 if res.get("ok") else 1)
             return
 

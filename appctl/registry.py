@@ -608,6 +608,38 @@ SEED_REGISTRY: List[Dict[str, Any]] = [
         "expect": {"postconditions": ["browser_status_reported"]},
         "risk": "low",
     },
+    {
+        "tool_id": "browser.bridge",
+        "app": "browser",
+        "action": "browser_bridge",
+        "inputs": {
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "Initial target URL for agent workflow",
+                },
+                "cookie_file": {
+                    "type": "string",
+                    "description": "Path to session cookie export file to inject",
+                },
+                "headless": {
+                    "type": "boolean",
+                    "description": "Launch in headless mode (default: true)",
+                },
+                "prefer_ephemeral": {
+                    "type": "boolean",
+                    "description": "Prefer dedicated ephemeral worker to prevent owner viewport collision",
+                },
+                "sao_url": {
+                    "type": "string",
+                    "description": "Custom SAO Browser endpoint URL (default: savv-spine:6092)",
+                },
+            },
+        },
+        "expect": {"postconditions": ["bridge_evaluated", "worker_dispatched"]},
+        "risk": "medium",
+    },
 ]
 
 
