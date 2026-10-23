@@ -19,6 +19,11 @@ IS_WINDOWS = sys.platform == "win32"
 if IS_WINDOWS:
     _ole32 = ctypes.windll.ole32
     _user32 = ctypes.windll.user32
+    _oleaut32 = ctypes.windll.oleaut32
+    _oleaut32.SysFreeString.argtypes = [c_void_p]
+    _oleaut32.SysFreeString.restype = None
+
+    UIA_InvokePatternId = 10000
 
     class GUID(Structure):
         _fields_ = [
@@ -105,29 +110,41 @@ class UIAClient:
         evt = ctypes.cast(ctypes.cast(pElem, POINTER(c_void_p)).contents, POINTER(c_void_p))
 
         get_CurrentProcessId = ctypes.WINFUNCTYPE(c_long, c_void_p, POINTER(c_int))(evt[20])
-        get_CurrentLocalizedControlType = ctypes.WINFUNCTYPE(c_long, c_void_p, POINTER(ctypes.c_wchar_p))(
+        get_CurrentLocalizedControlType = ctypes.WINFUNCTYPE(c_long, c_void_p, POINTER(c_void_p))(
             evt[22]
         )
-        get_CurrentName = ctypes.WINFUNCTYPE(c_long, c_void_p, POINTER(ctypes.c_wchar_p))(evt[23])
+        get_CurrentName = ctypes.WINFUNCTYPE(c_long, c_void_p, POINTER(c_void_p))(evt[23])
         get_CurrentIsEnabled = ctypes.WINFUNCTYPE(c_long, c_void_p, POINTER(wintypes.BOOL))(evt[28])
-        get_CurrentAutomationId = ctypes.WINFUNCTYPE(c_long, c_void_p, POINTER(ctypes.c_wchar_p))(evt[29])
-        get_CurrentClassName = ctypes.WINFUNCTYPE(c_long, c_void_p, POINTER(ctypes.c_wchar_p))(evt[30])
+        get_CurrentAutomationId = ctypes.WINFUNCTYPE(c_long, c_void_p, POINTER(c_void_p))(evt[29])
+        get_CurrentClassName = ctypes.WINFUNCTYPE(c_long, c_void_p, POINTER(c_void_p))(evt[30])
         get_CurrentBoundingRectangle = ctypes.WINFUNCTYPE(c_long, c_void_p, POINTER(RECT))(evt[43])
 
         pid = c_int()
         get_CurrentProcessId(pElem, byref(pid))
 
-        nm = ctypes.c_wchar_p()
+        nm = c_void_p()
         get_CurrentName(pElem, byref(nm))
+        name_str = ctypes.wstring_at(nm.value) if nm.value else ""
+        if nm.value:
+            _oleaut32.SysFreeString(nm)
 
-        lct = ctypes.c_wchar_p()
+        lct = c_void_p()
         get_CurrentLocalizedControlType(pElem, byref(lct))
+        role_str = ctypes.wstring_at(lct.value) if lct.value else ""
+        if lct.value:
+            _oleaut32.SysFreeString(lct)
 
-        aid = ctypes.c_wchar_p()
+        aid = c_void_p()
         get_CurrentAutomationId(pElem, byref(aid))
+        aid_str = ctypes.wstring_at(aid.value) if aid.value else ""
+        if aid.value:
+            _oleaut32.SysFreeString(aid)
 
-        cls = ctypes.c_wchar_p()
+        cls = c_void_p()
         get_CurrentClassName(pElem, byref(cls))
+        cls_str = ctypes.wstring_at(cls.value) if cls.value else ""
+        if cls.value:
+            _oleaut32.SysFreeString(cls)
 
         en = wintypes.BOOL()
         get_CurrentIsEnabled(pElem, byref(en))
@@ -139,10 +156,10 @@ class UIAClient:
         h = rc.bottom - rc.top
 
         return {
-            "name": nm.value or "",
-            "role": lct.value or "",
-            "id": aid.value or "",
-            "class": cls.value or "",
+            "name": name_str,
+            "role": role_str,
+            "id": aid_str,
+            "class": cls_str,
             "enabled": bool(en.value),
             "bounds": [rc.left, rc.top, w, h],
         }
@@ -231,6 +248,82 @@ class UIAClient:
             self._release_com(child)
 
         return results
+
+    def find_element(
+        self,
+        pElem: c_void_p,
+        role: Optional[str] = None,
+        name: Optional[str] = None,
+        automation_id: Optional[str] = None,
+        current_depth: int = 0,
+        max_depth: int = 8,
+    ) -> Optional[c_void_p]:
+        """Traverse and return the first COM element matching role, name, or automation ID."""
+        if current_depth > max_depth or not pElem or not pElem.value:
+            return None
+
+        info = self.get_element_info(pElem)
+        if info:
+            match = True
+            if role and not re.search(role, info.get("role", ""), re.IGNORECASE):
+                match = False
+            if name and not re.search(name, info.get("name", ""), re.IGNORECASE):
+                match = False
+            if automation_id and not re.search(automation_id, info.get("id", ""), re.IGNORECASE):
+                match = False
+
+            if (role or name or automation_id) and match:
+                evt = ctypes.cast(ctypes.cast(pElem, POINTER(c_void_p)).contents, POINTER(c_void_p))
+                addref_fn = ctypes.WINFUNCTYPE(ctypes.c_ulong, c_void_p)(evt[1])
+                addref_fn(pElem)
+                return pElem
+
+        child = c_void_p()
+        self.fn_GetFirstChildElement(self.pWalker, pElem, byref(child))
+        while child and child.value:
+            found = self.find_element(
+                child,
+                role=role,
+                name=name,
+                automation_id=automation_id,
+                current_depth=current_depth + 1,
+                max_depth=max_depth,
+            )
+            if found:
+                self._release_com(child)
+                return found
+
+            nxt = c_void_p()
+            self.fn_GetNextSiblingElement(self.pWalker, child, byref(nxt))
+            self._release_com(child)
+            child = nxt
+
+        if child and child.value:
+            self._release_com(child)
+
+        return None
+
+    def invoke_element(self, pElem: c_void_p) -> bool:
+        """Attempt true semantic actuation via IUIAutomationInvokePattern (Tier A)."""
+        if not pElem or not pElem.value:
+            return False
+        try:
+            evt = ctypes.cast(ctypes.cast(pElem, POINTER(c_void_p)).contents, POINTER(c_void_p))
+            fn_GetCurrentPattern = ctypes.WINFUNCTYPE(c_long, c_void_p, c_int, POINTER(c_void_p))(evt[16])
+            pPat = c_void_p()
+            hr = fn_GetCurrentPattern(pElem, UIA_InvokePatternId, byref(pPat))
+            if hr != 0 or not pPat or not pPat.value:
+                return False
+
+            try:
+                p_vt = ctypes.cast(ctypes.cast(pPat, POINTER(c_void_p)).contents, POINTER(c_void_p))
+                fn_Invoke = ctypes.WINFUNCTYPE(c_long, c_void_p)(p_vt[3])
+                hr_invoke = fn_Invoke(pPat)
+                return hr_invoke == 0
+            finally:
+                self._release_com(pPat)
+        except Exception:
+            return False
 
 
 _GLOBAL_UIA: Optional[UIAClient] = None
@@ -427,6 +520,46 @@ def run_a11y_click(
     rel_center = matched.get("relative_center", [0, 0])
     rx, ry = rel_center[0], rel_center[1]
 
+    # Try Tier A semantic actuation via IUIAutomationInvokePattern first (for primary click)
+    invoked = False
+    if IS_WINDOWS and button == "left":
+        try:
+            client = get_uia_client()
+            pRoot = c_void_p()
+            hr = client.fn_ElementFromHandle(client.pUIA, target["hwnd"], byref(pRoot))
+            if hr == 0 and pRoot and pRoot.value:
+                try:
+                    pMatch = client.find_element(
+                        pRoot, role=role, name=name, automation_id=automation_id
+                    )
+                    if pMatch and pMatch.value:
+                        try:
+                            invoked = client.invoke_element(pMatch)
+                        finally:
+                            client._release_com(pMatch)
+                finally:
+                    client._release_com(pRoot)
+        except Exception:
+            invoked = False
+
+    if invoked:
+        return {
+            "ok": True,
+            "action": "a11y-click",
+            "app": app,
+            "evidence": {
+                "pid": target["pid"],
+                "window": target["title"],
+                "matched_element": matched,
+                "relative_coordinates": {"x": rx, "y": ry},
+                "button": button,
+                "clicked": True,
+                "invoked": True,
+                "method": "InvokePattern",
+                "total_matches": len(elements),
+            },
+        }
+
     # Focus target application
     if focus_fn:
         try:
@@ -452,6 +585,8 @@ def run_a11y_click(
             "relative_coordinates": {"x": rx, "y": ry},
             "button": button,
             "clicked": True,
+            "invoked": False,
+            "method": "coordinate_click",
             "total_matches": len(elements),
         },
     }

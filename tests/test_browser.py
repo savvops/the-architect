@@ -26,6 +26,7 @@ from appctl.browser import (
     fork_browser,
     list_browser_workers,
     load_cookie_file,
+    act_on_worker,
     _load_workers,
     _save_workers,
 )
@@ -354,6 +355,194 @@ class TestSAOBrowserBridge(unittest.TestCase):
         data = json.loads(res.stdout)
         self.assertTrue(data.get("ok"))
         self.assertEqual(data.get("action"), "browser.url")
+
+    def test_takeover_and_resume_in_registry(self):
+        tool_ids = {t["tool_id"] for t in registry.list_tools()}
+        self.assertIn("browser.takeover", tool_ids)
+        self.assertIn("browser.resume", tool_ids)
+
+        t1, a1 = registry.validate_and_prepare("browser.takeover", {"sao_url": "https://example.com"})
+        self.assertEqual(a1["sao_url"], "https://example.com")
+
+        t2, a2 = registry.validate_and_prepare("browser.resume", {})
+        self.assertEqual(a2, {})
+
+    def test_sao_bridge_shared_mode_when_not_prefer_ephemeral(self):
+        bridge = SAOBrowserBridge()
+        # Mock get_status to simulate available, unpaused, idle SAO Browser
+        bridge.get_status = lambda timeout=3.0: {
+            "available": True,
+            "state": {"paused": False, "busy": False, "queue": [], "holder": None},
+        }
+        res = bridge.route_request(url="https://example.com", prefer_ephemeral=False)
+        self.assertTrue(res.get("ok"))
+        ev = res.get("evidence", {})
+        self.assertEqual(ev.get("bridge_mode"), "shared_sao")
+        self.assertFalse(ev.get("isolated"))
+        self.assertIsNone(ev.get("worker"))
+        self.assertTrue(ev.get("owner_viewport_protected"))
+
+
+class TestCDPClientWebSocketHandling(unittest.TestCase):
+    def test_cdp_ws_skips_async_events_and_handles_ping(self):
+        import socket
+        import struct
+        import threading
+
+        server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_sock.bind(("127.0.0.1", 0))
+        server_sock.listen(1)
+        port = server_sock.getsockname()[1]
+
+        def make_server_frame(opcode: int, payload: bytes) -> bytes:
+            length = len(payload)
+            if length <= 125:
+                return bytes([0x80 | opcode, length]) + payload
+            return bytes([0x80 | opcode, 126]) + struct.pack(">H", length) + payload
+
+        def fake_cdp_server():
+            try:
+                conn, _ = server_sock.accept()
+                conn.settimeout(3.0)
+                conn.recv(2048)
+                # Send HTTP 101 AND an immediate async CDP event in the same packet
+                async_event = json.dumps({"method": "Page.frameStartedLoading", "params": {"frameId": "1"}}).encode("utf-8")
+                ping_frame = make_server_frame(0x9, b"ping")
+                event_frame = make_server_frame(0x1, async_event)
+                handshake = (
+                    b"HTTP/1.1 101 Switching Protocols\r\n"
+                    b"Upgrade: websocket\r\n"
+                    b"Connection: Upgrade\r\n\r\n"
+                )
+                conn.sendall(handshake + ping_frame + event_frame)
+
+                # Receive client's command frame (and pong frame)
+                conn.recv(2048)
+                # Now send the actual command response with id=1
+                reply = json.dumps({"id": 1, "result": {"cookiesSet": True}}).encode("utf-8")
+                conn.sendall(make_server_frame(0x1, reply))
+                conn.close()
+            finally:
+                server_sock.close()
+
+        t = threading.Thread(target=fake_cdp_server, daemon=True)
+        t.start()
+
+        client = CDPClient(host="127.0.0.1", port=port)
+        res = client.send_ws_command(f"ws://127.0.0.1:{port}/devtools/page/1", "Network.setCookies", {"cookies": []})
+        t.join(timeout=3.0)
+
+        self.assertEqual(res.get("id"), 1)
+        self.assertEqual(res.get("result"), {"cookiesSet": True})
+
+
+class TestCDPClientPrimitives(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_cdp_client_navigate_and_screenshot(self):
+        from unittest.mock import patch, MagicMock
+        import base64
+
+        client = CDPClient(host="127.0.0.1", port=9222)
+        mock_targets = [{"type": "page", "webSocketDebuggerUrl": "ws://127.0.0.1:9222/page/1"}]
+
+        with patch.object(client, "get_targets", return_value=mock_targets):
+            # 1. Navigate
+            with patch.object(client, "send_ws_command", return_value={"id": 1, "result": {"frameId": "F123"}}):
+                nav_res = client.navigate("https://news.ycombinator.com")
+                self.assertTrue(nav_res["ok"])
+                self.assertEqual(nav_res["frame_id"], "F123")
+
+            # 2. Screenshot
+            dummy_png_bytes = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
+            dummy_b64 = base64.b64encode(dummy_png_bytes).decode("ascii")
+            out_png = os.path.join(self.temp_dir, "screen.png")
+
+            with patch.object(client, "send_ws_command", return_value={"id": 2, "result": {"data": dummy_b64}}):
+                ss_res = client.screenshot(output_path=out_png)
+                self.assertTrue(ss_res["ok"])
+                self.assertTrue(os.path.exists(out_png))
+                with open(out_png, "rb") as f:
+                    self.assertEqual(f.read(), dummy_png_bytes)
+
+    def test_cdp_client_eval_and_dom(self):
+        from unittest.mock import patch
+
+        client = CDPClient(host="127.0.0.1", port=9222)
+        mock_targets = [{"type": "page", "webSocketDebuggerUrl": "ws://127.0.0.1:9222/page/1"}]
+
+        with patch.object(client, "get_targets", return_value=mock_targets):
+            # 1. Eval JS
+            with patch.object(client, "send_ws_command", return_value={"id": 1, "result": {"result": {"type": "number", "value": 42}}}):
+                eval_res = client.eval_js("6 * 7")
+                self.assertTrue(eval_res["ok"])
+                self.assertEqual(eval_res["value"], 42)
+
+            # 2. DOM extraction
+            mock_dom_val = {
+                "title": "Hacker News",
+                "url": "https://news.ycombinator.com",
+                "count": 2,
+                "elements": [
+                    {"tag": "a", "selector": "a.storylink", "text": "Show HN", "center": [100, 50]},
+                    {"tag": "button", "selector": "button#submit", "text": "Vote", "center": [200, 50]},
+                ]
+            }
+            with patch.object(client, "send_ws_command", return_value={"id": 2, "result": {"result": {"type": "object", "value": mock_dom_val}}}):
+                dom_res = client.dom()
+                self.assertTrue(dom_res["ok"])
+                self.assertEqual(dom_res["evidence"]["count"], 2)
+                self.assertEqual(dom_res["evidence"]["title"], "Hacker News")
+
+    def test_cdp_client_click_and_type(self):
+        from unittest.mock import patch
+
+        client = CDPClient(host="127.0.0.1", port=9222)
+        mock_targets = [{"type": "page", "webSocketDebuggerUrl": "ws://127.0.0.1:9222/page/1"}]
+
+        with patch.object(client, "get_targets", return_value=mock_targets):
+            # 1. Click by selector
+            with patch.object(client, "send_ws_command", return_value={"id": 1, "result": {"result": {"type": "object", "value": {"found": True, "center": [150, 75]}}}}):
+                c_res = client.click(selector="button#login")
+                self.assertTrue(c_res["ok"])
+                self.assertEqual(c_res["method"], "js_click")
+                self.assertEqual(c_res["center"], [150, 75])
+
+            # 2. Type text
+            with patch.object(client, "send_ws_command", return_value={"id": 2, "result": {}}):
+                t_res = client.type_text("admin_user", selector="input#username")
+                self.assertTrue(t_res["ok"])
+
+    def test_act_on_worker_dispatch(self):
+        from unittest.mock import patch, MagicMock
+
+        mock_workers = [{
+            "worker_id": "bwrk_test123",
+            "pid": 99999,
+            "cdp_port": 19222,
+        }]
+
+        with patch("appctl.browser._load_workers", return_value=mock_workers), \
+             patch("appctl.browser._is_pid_alive", return_value=True), \
+             patch("appctl.browser.CDPClient.navigate", return_value={"ok": True, "action": "navigate", "url": "https://example.com"}):
+
+            res = act_on_worker("bwrk_test123", "navigate", url="https://example.com")
+            self.assertTrue(res["ok"])
+            self.assertEqual(res["worker_id"], "bwrk_test123")
+            self.assertEqual(res["action"], "browser.act.navigate")
+
+    def test_browser_act_and_router_act_registry_schemas(self):
+        t_bact = registry.get("browser.act")
+        self.assertIsNotNone(t_bact)
+        validate_schema({"worker_id": "bwrk_123", "action": "navigate", "url": "https://example.com"}, t_bact["inputs"])
+
+        t_ract = registry.get("router.act")
+        self.assertIsNotNone(t_ract)
+        validate_schema({"task": "click Save button in notepad"}, t_ract["inputs"])
 
 
 if __name__ == "__main__":

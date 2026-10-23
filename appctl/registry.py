@@ -656,6 +656,79 @@ SEED_REGISTRY: List[Dict[str, Any]] = [
         "expect": {"postconditions": ["unified_url_retrieved"]},
         "risk": "low",
     },
+    {
+        "tool_id": "browser.takeover",
+        "app": "browser",
+        "action": "browser_takeover",
+        "inputs": {
+            "type": "object",
+            "properties": {
+                "sao_url": {
+                    "type": "string",
+                    "description": "Custom SAO Browser endpoint URL (default: savv-spine:6092)",
+                },
+            },
+        },
+        "expect": {"postconditions": ["owner_takeover_active"]},
+        "risk": "low",
+    },
+    {
+        "tool_id": "browser.resume",
+        "app": "browser",
+        "action": "browser_resume",
+        "inputs": {
+            "type": "object",
+            "properties": {
+                "sao_url": {
+                    "type": "string",
+                    "description": "Custom SAO Browser endpoint URL (default: savv-spine:6092)",
+                },
+            },
+        },
+        "expect": {"postconditions": ["agents_resumed"]},
+        "risk": "low",
+    },
+    {
+        "tool_id": "router.act",
+        "app": "system",
+        "action": "act",
+        "inputs": {
+            "type": "object",
+            "properties": {
+                "task": {"type": "string", "description": "High-level automation task description"},
+                "context": {"type": "object", "description": "Optional routing context flags"},
+            },
+            "required": ["task"],
+        },
+        "expect": {"postconditions": ["task_executed_or_recovered"]},
+        "risk": "medium",
+    },
+    {
+        "tool_id": "browser.act",
+        "app": "browser",
+        "action": "browser_act",
+        "inputs": {
+            "type": "object",
+            "properties": {
+                "worker_id": {"type": "string", "description": "Worker ID or PID of ephemeral browser"},
+                "action": {
+                    "type": "string",
+                    "enum": ["navigate", "screenshot", "dom", "click", "type", "eval"],
+                    "description": "CDP action to perform",
+                },
+                "url": {"type": "string", "description": "URL to navigate to"},
+                "selector": {"type": "string", "description": "CSS selector for click/type"},
+                "text": {"type": "string", "description": "Text to type into input"},
+                "expr": {"type": "string", "description": "JavaScript expression to evaluate"},
+                "output": {"type": "string", "description": "File path to save screenshot"},
+                "x": {"type": "integer", "description": "X coordinate for raw click"},
+                "y": {"type": "integer", "description": "Y coordinate for raw click"},
+            },
+            "required": ["worker_id", "action"],
+        },
+        "expect": {"postconditions": ["browser_action_completed"]},
+        "risk": "low",
+    },
 ]
 
 

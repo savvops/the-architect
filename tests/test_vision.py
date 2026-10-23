@@ -122,6 +122,67 @@ class TestVisionGrounding(unittest.TestCase):
             mock_click.assert_called_once_with("chrome", 190, 315, button="left")
             self.assertEqual(res["evidence"]["relative_coordinates"], {"x": 190, "y": 315})
 
+    @patch("appctl.vision.ground_text")
+    def test_run_vision_click_with_resolved_target(self, mock_ground):
+        mock_ground.return_value = {
+            "ok": True,
+            "matched_text": "Submit",
+            "bounds": [150, 300, 80, 30],
+            "center": [190, 315],
+            "confidence": 1.0,
+            "total_matches": 1,
+        }
+
+        target_dict = {"hwnd": 12345, "pid": 6789, "title": "Test App"}
+        mock_resolve = MagicMock(return_value=target_dict)
+        mock_see = MagicMock(return_value={"ok": True})
+        mock_click = MagicMock()
+        mock_focus = MagicMock()
+
+        with patch("os.path.exists", return_value=True), patch("os.remove"):
+            res = run_vision_click(
+                "testapp",
+                "Submit",
+                button="left",
+                resolve_fn=mock_resolve,
+                see_fn=mock_see,
+                click_fn=mock_click,
+                focus_fn=mock_focus,
+            )
+            self.assertTrue(res["ok"])
+            mock_resolve.assert_called_once_with("testapp")
+            mock_focus.assert_called_once_with(12345)
+            mock_see.assert_called_once()
+            self.assertEqual(mock_see.call_args[0][0], target_dict)
+            mock_click.assert_called_once_with(target_dict, 190, 315, button="left")
+
+    @patch("appctl.vision.ground_text")
+    def test_run_vision_find_with_resolved_target(self, mock_ground):
+        mock_ground.return_value = {
+            "ok": True,
+            "matched_text": "Options",
+            "bounds": [10, 20, 30, 40],
+            "center": [25, 40],
+            "confidence": 0.95,
+            "total_matches": 1,
+        }
+
+        target_dict = {"hwnd": 1111, "pid": 2222, "title": "Options App"}
+        mock_resolve = MagicMock(return_value=target_dict)
+        mock_see = MagicMock(return_value={"ok": True})
+
+        with patch("os.path.isfile", return_value=False), patch("os.path.exists", return_value=True), patch("os.remove"):
+            res = run_vision_find(
+                "optionsapp",
+                "Options",
+                resolve_fn=mock_resolve,
+                see_fn=mock_see,
+            )
+            self.assertTrue(res["ok"])
+            mock_resolve.assert_called_once_with("optionsapp")
+            mock_see.assert_called_once()
+            self.assertEqual(mock_see.call_args[0][0], target_dict)
+
 
 if __name__ == "__main__":
     unittest.main()

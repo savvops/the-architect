@@ -124,6 +124,77 @@ class TestAccessibilityAdapter(unittest.TestCase):
             self.assertFalse(res["ok"])
             self.assertIn("no element matched query", res["error"])
 
+    def test_uia_invoke_pattern_preference(self):
+        mock_target = {"hwnd": 111, "pid": 222, "title": "Mock Window"}
+        mock_element = {
+            "name": "SaveButton",
+            "role": "button",
+            "id": "save-id",
+            "bounds": [10, 20, 30, 40],
+            "relative_center": [25, 40],
+        }
+
+        from unittest.mock import patch, MagicMock
+        from ctypes import c_void_p
+
+        mock_client = MagicMock()
+        def fake_elem_from_handle(uia, hwnd, out_ptr):
+            out_ptr._obj.value = 12345
+            return 0
+
+        mock_client.fn_ElementFromHandle = MagicMock(side_effect=fake_elem_from_handle)
+        mock_client.find_element = MagicMock(return_value=c_void_p(67890))
+        mock_client.invoke_element = MagicMock(return_value=True)  # InvokePattern succeeds
+
+        mock_click = MagicMock()
+
+        with patch("appctl.a11y.query_a11y_elements", return_value=[mock_element]), \
+             patch("appctl.a11y.get_uia_client", return_value=mock_client):
+            res = run_a11y_click(
+                "mock",
+                name="SaveButton",
+                button="left",
+                resolve_fn=lambda a: mock_target,
+                click_fn=mock_click,
+            )
+            self.assertTrue(res["ok"])
+            self.assertTrue(res["evidence"]["invoked"])
+            self.assertEqual(res["evidence"]["method"], "InvokePattern")
+            # Coordinate click handler must NOT be invoked when InvokePattern succeeded
+            mock_click.assert_not_called()
+
+    def test_uia_invoke_pattern_fallback_to_coordinate_click(self):
+        mock_target = {"hwnd": 111, "pid": 222, "title": "Mock Window"}
+        mock_element = {
+            "name": "PlainLabel",
+            "role": "text",
+            "id": "lbl-id",
+            "bounds": [10, 20, 30, 40],
+            "relative_center": [25, 40],
+        }
+
+        from unittest.mock import patch, MagicMock
+        mock_client = MagicMock()
+        mock_client.fn_ElementFromHandle = MagicMock(return_value=0)
+        mock_client.find_element = MagicMock(return_value=MagicMock())
+        mock_client.invoke_element = MagicMock(return_value=False)  # InvokePattern unsupported
+
+        mock_click = MagicMock()
+
+        with patch("appctl.a11y.query_a11y_elements", return_value=[mock_element]), \
+             patch("appctl.a11y.get_uia_client", return_value=mock_client):
+            res = run_a11y_click(
+                "mock",
+                name="PlainLabel",
+                button="left",
+                resolve_fn=lambda a: mock_target,
+                click_fn=mock_click,
+            )
+            self.assertTrue(res["ok"])
+            self.assertFalse(res["evidence"]["invoked"])
+            self.assertEqual(res["evidence"]["method"], "coordinate_click")
+            mock_click.assert_called_once_with(mock_target, 25, 40, button="left")
+
     @unittest.skipUnless(IS_WINDOWS, "Live UIA tests require Windows")
     def test_live_windows_uia_query(self):
         from appctl.appctl import _win_resolve_target

@@ -175,7 +175,7 @@ class CDPClient:
             return json.loads(resp.read().decode("utf-8"))
 
     def send_ws_command(self, ws_url: str, method: str, params: Optional[Dict[str, Any]] = None, timeout: float = 5.0) -> Dict[str, Any]:
-        """Send a single CDP command over WebSocket and read response."""
+        """Send a single CDP command over WebSocket and read matching response (skipping async events)."""
         parsed = urllib.parse.urlparse(ws_url)
         host = parsed.hostname or self.host
         port = parsed.port or self.port
@@ -197,12 +197,20 @@ class CDPClient:
                 "Sec-WebSocket-Version: 13\r\n\r\n"
             )
             s.sendall(req.encode("ascii"))
-            resp = s.recv(2048).decode("latin-1")
+            raw_handshake = b""
+            while b"\r\n\r\n" not in raw_handshake:
+                chunk = s.recv(2048)
+                if not chunk:
+                    raise RuntimeError("WebSocket connection closed during handshake")
+                raw_handshake += chunk
+            head_bytes, _, tail_bytes = raw_handshake.partition(b"\r\n\r\n")
+            resp = head_bytes.decode("latin-1")
             if "101 Switching Protocols" not in resp and "101 WebSocket Protocol Handshake" not in resp:
                 raise RuntimeError(f"WebSocket upgrade failed: {resp[:100]}")
 
             self._msg_id += 1
-            cmd_obj = {"id": self._msg_id, "method": method, "params": params or {}}
+            expected_id = self._msg_id
+            cmd_obj = {"id": expected_id, "method": method, "params": params or {}}
             payload = json.dumps(cmd_obj).encode("utf-8")
 
             # Client-to-server frames must be masked
@@ -219,30 +227,60 @@ class CDPClient:
 
             s.sendall(header + masked)
 
-            # Read response
-            buffer = bytearray()
+            # Read response frames until message matching expected_id arrives
+            buffer = bytearray(tail_bytes)
+            fragments = bytearray()
             while True:
-                chunk = s.recv(4096)
-                if not chunk:
-                    break
-                buffer.extend(chunk)
-                if len(buffer) >= 2:
-                    payload_len = buffer[1] & 0x7F
+                while len(buffer) >= 2:
+                    b0, b1 = buffer[0], buffer[1]
+                    fin = bool(b0 & 0x80)
+                    opcode = b0 & 0x0F
+                    is_masked = bool(b1 & 0x80)
+                    payload_len = b1 & 0x7F
                     offset = 2
                     if payload_len == 126:
                         if len(buffer) < 4:
-                            continue
+                            break
                         payload_len = struct.unpack(">H", buffer[2:4])[0]
                         offset = 4
                     elif payload_len == 127:
                         if len(buffer) < 10:
-                            continue
+                            break
                         payload_len = struct.unpack(">Q", buffer[2:10])[0]
                         offset = 10
 
-                    if len(buffer) >= offset + payload_len:
-                        frame_data = buffer[offset : offset + payload_len].decode("utf-8")
-                        return json.loads(frame_data)
+                    mask_len = 4 if is_masked else 0
+                    total_frame_len = offset + mask_len + payload_len
+                    if len(buffer) < total_frame_len:
+                        break
+
+                    frame_mask = buffer[offset : offset + 4] if is_masked else None
+                    frame_payload = bytes(buffer[offset + mask_len : total_frame_len])
+                    del buffer[:total_frame_len]
+
+                    if frame_mask:
+                        frame_payload = bytes(b ^ frame_mask[i % 4] for i, b in enumerate(frame_payload))
+
+                    if opcode == 0x8:  # Close
+                        raise RuntimeError("CDP WebSocket closed by peer")
+                    elif opcode == 0x9:  # Ping -> send Pong (0xA)
+                        pong_mask = os.urandom(4)
+                        pong_masked = bytes(b ^ pong_mask[i % 4] for i, b in enumerate(frame_payload))
+                        s.sendall(bytes([0x8A, 0x80 | len(frame_payload)]) + pong_mask + pong_masked)
+                        continue
+                    elif opcode in (0x1, 0x0):  # Text or continuation
+                        fragments.extend(frame_payload)
+                        if fin:
+                            msg_text = fragments.decode("utf-8", errors="replace")
+                            fragments.clear()
+                            msg_obj = json.loads(msg_text)
+                            if msg_obj.get("id") == expected_id:
+                                return msg_obj
+
+                chunk = s.recv(4096)
+                if not chunk:
+                    break
+                buffer.extend(chunk)
 
             raise RuntimeError("Incomplete response from CDP WebSocket")
         finally:
@@ -261,6 +299,233 @@ class CDPClient:
 
         res = self.send_ws_command(ws_url, "Network.setCookies", {"cookies": cookies})
         return "error" not in res
+
+    def get_page_ws_url(self, timeout: float = 3.0) -> str:
+        """Resolve the WebSocket debugger URL for the active page target."""
+        try:
+            targets = self.get_targets(timeout=timeout)
+            for t in targets:
+                if t.get("type") == "page" and t.get("webSocketDebuggerUrl"):
+                    return t["webSocketDebuggerUrl"]
+            if targets and targets[0].get("webSocketDebuggerUrl"):
+                return targets[0]["webSocketDebuggerUrl"]
+        except Exception:
+            pass
+
+        version_info = self.get_version(timeout=timeout)
+        ws_url = version_info.get("webSocketDebuggerUrl")
+        if ws_url:
+            return ws_url
+        raise RuntimeError(f"No active CDP page target found on {self.host}:{self.port}")
+
+    def navigate(self, url: str) -> Dict[str, Any]:
+        """Navigate active page to target URL via Page.navigate."""
+        ws_url = self.get_page_ws_url()
+        res = self.send_ws_command(ws_url, "Page.navigate", {"url": url})
+        return {
+            "ok": "error" not in res,
+            "action": "navigate",
+            "url": url,
+            "frame_id": res.get("result", {}).get("frameId"),
+            "response": res,
+        }
+
+    def screenshot(self, output_path: Optional[str] = None) -> Dict[str, Any]:
+        """Capture page screenshot via Page.captureScreenshot and optionally write PNG file."""
+        ws_url = self.get_page_ws_url()
+        res = self.send_ws_command(ws_url, "Page.captureScreenshot", {"format": "png"})
+        if "error" in res:
+            return {"ok": False, "action": "screenshot", "error": res["error"]}
+
+        b64_data = res.get("result", {}).get("data", "")
+        saved_path = None
+        if output_path:
+            raw_bytes = base64.b64decode(b64_data)
+            size_bytes = len(raw_bytes)
+            os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+            with open(output_path, "wb") as f:
+                f.write(raw_bytes)
+            saved_path = os.path.abspath(output_path)
+        else:
+            size_bytes = len(base64.b64decode(b64_data)) if b64_data else 0
+
+        return {
+            "ok": True,
+            "action": "screenshot",
+            "size_bytes": size_bytes,
+            "path": saved_path,
+            "data": b64_data if not output_path else None,
+        }
+
+    def eval_js(self, expression: str) -> Dict[str, Any]:
+        """Evaluate arbitrary JavaScript in page context via Runtime.evaluate."""
+        ws_url = self.get_page_ws_url()
+        res = self.send_ws_command(
+            ws_url,
+            "Runtime.evaluate",
+            {"expression": expression, "returnByValue": True, "awaitPromise": True},
+        )
+        if "error" in res:
+            return {"ok": False, "action": "eval", "error": res["error"]}
+
+        result_obj = res.get("result", {}).get("result", {})
+        val = result_obj.get("value")
+        return {
+            "ok": True,
+            "action": "eval",
+            "expression": expression,
+            "type": result_obj.get("type"),
+            "value": val,
+        }
+
+    def dom(self, limit: int = 200) -> Dict[str, Any]:
+        """Extract visible, interactive DOM elements (buttons, inputs, links, text) with selectors."""
+        script = f"""
+        (() => {{
+            const elements = [];
+            const walker = document.createTreeWalker(
+                document.body || document.documentElement,
+                NodeFilter.SHOW_ELEMENT,
+                null,
+                false
+            );
+            let node;
+            let count = 0;
+            while ((node = walker.nextNode()) && count < {limit}) {{
+                const tag = node.tagName.toLowerCase();
+                const role = node.getAttribute('role') || '';
+                const id = node.id || '';
+                const className = typeof node.className === 'string' ? node.className : '';
+                const isClickable = ['button', 'a', 'input', 'select', 'textarea'].includes(tag) ||
+                                    role === 'button' || role === 'link' || node.onclick !== null;
+                const isInput = ['input', 'textarea', 'select'].includes(tag);
+                const rect = node.getBoundingClientRect();
+                const visible = rect.width > 0 && rect.height > 0 &&
+                                window.getComputedStyle(node).visibility !== 'hidden' &&
+                                window.getComputedStyle(node).display !== 'none';
+                if ((isClickable || isInput || ['h1','h2','h3','p'].includes(tag)) && visible) {{
+                    const text = (node.innerText || node.textContent || node.placeholder || node.value || '').trim().slice(0, 100);
+                    let sel = tag;
+                    if (id) sel += '#' + id;
+                    else if (className) sel += '.' + className.trim().split(/\\s+/)[0];
+                    elements.push({{
+                        tag: tag,
+                        selector: sel,
+                        role: role,
+                        id: id,
+                        text: text,
+                        bounds: [Math.round(rect.left), Math.round(rect.top), Math.round(rect.width), Math.round(rect.height)],
+                        center: [Math.round(rect.left + rect.width / 2), Math.round(rect.top + rect.height / 2)]
+                    }});
+                    count++;
+                }}
+            }}
+            return {{
+                title: document.title,
+                url: window.location.href,
+                count: elements.length,
+                elements: elements
+            }};
+        }})()
+        """
+        res = self.eval_js(script)
+        if not res.get("ok"):
+            return res
+        return {
+            "ok": True,
+            "action": "dom",
+            "evidence": res.get("value", {}),
+        }
+
+    def click(self, selector: Optional[str] = None, x: Optional[int] = None, y: Optional[int] = None) -> Dict[str, Any]:
+        """Click an element by CSS selector or dispatch mouse event at (x, y)."""
+        ws_url = self.get_page_ws_url()
+        if selector:
+            script = f"""
+            (() => {{
+                const el = document.querySelector({json.dumps(selector)});
+                if (!el) return {{ found: false }};
+                el.scrollIntoView({{ block: 'center', inline: 'center' }});
+                el.click();
+                const r = el.getBoundingClientRect();
+                return {{ found: true, center: [Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2)] }};
+            }})()
+            """
+            eval_res = self.eval_js(script)
+            val = eval_res.get("value", {}) if eval_res.get("ok") else {}
+            if val.get("found"):
+                return {
+                    "ok": True,
+                    "action": "click",
+                    "method": "js_click",
+                    "selector": selector,
+                    "center": val.get("center"),
+                }
+            if x is None and y is None:
+                return {
+                    "ok": False,
+                    "action": "click",
+                    "error": f"Element '{selector}' not found in DOM",
+                }
+
+        if x is not None and y is not None:
+            self.send_ws_command(
+                ws_url,
+                "Input.dispatchMouseEvent",
+                {"type": "mousePressed", "x": int(x), "y": int(y), "button": "left", "clickCount": 1},
+            )
+            time.sleep(0.02)
+            self.send_ws_command(
+                ws_url,
+                "Input.dispatchMouseEvent",
+                {"type": "mouseReleased", "x": int(x), "y": int(y), "button": "left", "clickCount": 1},
+            )
+            return {
+                "ok": True,
+                "action": "click",
+                "method": "input_click",
+                "coordinates": {"x": int(x), "y": int(y)},
+            }
+
+        return {"ok": False, "action": "click", "error": "Must specify either selector or x, y coordinates"}
+
+    def type_text(self, text: str, selector: Optional[str] = None) -> Dict[str, Any]:
+        """Type text into an input field matching selector, or insert text at current focus."""
+        ws_url = self.get_page_ws_url()
+        if selector:
+            script = f"""
+            (() => {{
+                const el = document.querySelector({json.dumps(selector)});
+                if (!el) return false;
+                el.focus();
+                if ('value' in el) {{
+                    el.value = {json.dumps(text)};
+                    el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                    el.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                    return true;
+                }}
+                return false;
+            }})()
+            """
+            eval_res = self.eval_js(script)
+            if eval_res.get("ok") and eval_res.get("value"):
+                return {
+                    "ok": True,
+                    "action": "type",
+                    "method": "dom_value",
+                    "selector": selector,
+                    "chars": len(text),
+                }
+
+        # Fallback to CDP Input.insertText
+        res = self.send_ws_command(ws_url, "Input.insertText", {"text": text})
+        return {
+            "ok": "error" not in res,
+            "action": "type",
+            "method": "insert_text",
+            "chars": len(text),
+            "response": res,
+        }
 
 
 def load_cookie_file(cookie_path: str) -> List[Dict[str, Any]]:
@@ -691,12 +956,16 @@ def destroy_browser_worker(worker_id: str) -> Dict[str, Any]:
         # Purge temporary directory
         purged = False
         if pdir and os.path.exists(pdir):
-            try:
-                time.sleep(0.2)
-                shutil.rmtree(pdir, ignore_errors=True)
-                purged = not os.path.exists(pdir)
-            except Exception:
-                pass
+            for _ in range(6):
+                try:
+                    time.sleep(0.15)
+                    shutil.rmtree(pdir, ignore_errors=True)
+                    if not os.path.exists(pdir):
+                        purged = True
+                        break
+                except Exception:
+                    pass
+            purged = not os.path.exists(pdir)
 
         destroyed_evidence.append({
             "worker_id": t.get("worker_id"),
@@ -790,6 +1059,70 @@ class SAOBrowserBridge:
         except Exception as e:
             return {"available": False, "error": str(e)}
 
+    def takeover(self, timeout: float = 3.0) -> Dict[str, Any]:
+        """Pause autonomous agents on SAO Browser and lock viewport for exclusive owner control."""
+        try:
+            req = urllib.request.Request(
+                f"{self.sao_url}/sao-control/owner/stop",
+                data=b"{}",
+                method="POST",
+                headers={
+                    "User-Agent": "Architect-Bridge/1.0",
+                    "X-SAO-Browser": "1",
+                    "Content-Type": "application/json",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=timeout, context=self.ctx) as resp:
+                data = json.loads(resp.read().decode("utf-8")) if resp.length != 0 else {}
+                return {
+                    "ok": True,
+                    "action": "browser.takeover",
+                    "evidence": {
+                        "paused": True,
+                        "sao_url": f"{self.sao_url}/",
+                        "response": data,
+                    },
+                }
+        except Exception as e:
+            return {
+                "ok": False,
+                "action": "browser.takeover",
+                "error": str(e),
+                "evidence": {"sao_url": f"{self.sao_url}/"},
+            }
+
+    def resume(self, timeout: float = 3.0) -> Dict[str, Any]:
+        """Resume autonomous agent operations on SAO Browser."""
+        try:
+            req = urllib.request.Request(
+                f"{self.sao_url}/sao-control/owner/resume",
+                data=b"{}",
+                method="POST",
+                headers={
+                    "User-Agent": "Architect-Bridge/1.0",
+                    "X-SAO-Browser": "1",
+                    "Content-Type": "application/json",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=timeout, context=self.ctx) as resp:
+                data = json.loads(resp.read().decode("utf-8")) if resp.length != 0 else {}
+                return {
+                    "ok": True,
+                    "action": "browser.resume",
+                    "evidence": {
+                        "paused": False,
+                        "sao_url": f"{self.sao_url}/",
+                        "response": data,
+                    },
+                }
+        except Exception as e:
+            return {
+                "ok": False,
+                "action": "browser.resume",
+                "error": str(e),
+                "evidence": {"sao_url": f"{self.sao_url}/"},
+            }
+
     def route_request(
         self,
         url: Optional[str] = None,
@@ -810,6 +1143,21 @@ class SAOBrowserBridge:
         is_busy = sao_state.get("busy", False)
         queue_len = len(sao_state.get("queue", []))
         holder = sao_state.get("holder")
+
+        if not prefer_ephemeral and sao_res.get("available") and not is_paused and not is_busy and queue_len == 0:
+            return {
+                "ok": True,
+                "action": "browser.bridge",
+                "evidence": {
+                    "bridge_mode": "shared_sao",
+                    "offload_reason": None,
+                    "sao_status": sao_res,
+                    "unified_browser_url": f"{self.sao_url}/",
+                    "worker": None,
+                    "isolated": False,
+                    "owner_viewport_protected": True,
+                },
+            }
 
         # Determine routing reason
         reason = "concurrency_isolation"
@@ -856,4 +1204,103 @@ def bridge_browser(
         headless=headless,
         prefer_ephemeral=prefer_ephemeral,
     )
+
+
+def takeover_browser(sao_url: Optional[str] = None) -> Dict[str, Any]:
+    """Pause agents on SAO Browser for exclusive manual control."""
+    bridge = SAOBrowserBridge(sao_url=sao_url or SAO_BROWSER_URL)
+    return bridge.takeover()
+
+
+def resume_browser(sao_url: Optional[str] = None) -> Dict[str, Any]:
+    """Resume agent access on SAO Browser."""
+    bridge = SAOBrowserBridge(sao_url=sao_url or SAO_BROWSER_URL)
+    return bridge.resume()
+
+
+def act_on_worker(
+    worker_id: str,
+    action: str,
+    url: Optional[str] = None,
+    selector: Optional[str] = None,
+    text: Optional[str] = None,
+    expr: Optional[str] = None,
+    output: Optional[str] = None,
+    x: Optional[int] = None,
+    y: Optional[int] = None,
+    timeout: float = 10.0,
+) -> Dict[str, Any]:
+    """Execute CDP browser action on a running ephemeral worker."""
+    workers = _load_workers()
+    worker = None
+    for w in workers:
+        if w.get("worker_id") == worker_id or str(w.get("pid")) == worker_id:
+            worker = w
+            break
+
+    if not worker:
+        return {
+            "ok": False,
+            "action": f"browser.act.{action}",
+            "error": f"Worker '{worker_id}' not found in registry",
+        }
+
+    pid = worker.get("pid", 0)
+    if not _is_pid_alive(pid):
+        return {
+            "ok": False,
+            "action": f"browser.act.{action}",
+            "error": f"Worker process PID {pid} is no longer running",
+        }
+
+    cdp_port = worker.get("cdp_port")
+    if not cdp_port:
+        return {
+            "ok": False,
+            "action": f"browser.act.{action}",
+            "error": f"Worker '{worker_id}' does not have a CDP port configured",
+        }
+
+    client = CDPClient(port=cdp_port)
+
+    try:
+        if action == "navigate":
+            if not url:
+                return {"ok": False, "action": "browser.act.navigate", "error": "Missing 'url' argument"}
+            res = client.navigate(url)
+        elif action == "screenshot":
+            res = client.screenshot(output_path=output)
+        elif action == "eval":
+            if not expr:
+                return {"ok": False, "action": "browser.act.eval", "error": "Missing 'expr' argument"}
+            res = client.eval_js(expr)
+        elif action == "dom":
+            res = client.dom()
+        elif action == "click":
+            res = client.click(selector=selector, x=x, y=y)
+        elif action == "type":
+            if text is None:
+                return {"ok": False, "action": "browser.act.type", "error": "Missing 'text' argument"}
+            res = client.type_text(text, selector=selector)
+        else:
+            return {
+                "ok": False,
+                "action": f"browser.act.{action}",
+                "error": f"Unsupported browser action: '{action}'",
+            }
+
+        return {
+            "ok": res.get("ok", True),
+            "action": f"browser.act.{action}",
+            "worker_id": worker_id,
+            "cdp_port": cdp_port,
+            "evidence": res,
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "action": f"browser.act.{action}",
+            "worker_id": worker_id,
+            "error": str(e),
+        }
 

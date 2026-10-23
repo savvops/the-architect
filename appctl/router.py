@@ -38,6 +38,16 @@ TOOL_TIER_MAPPING = {
     "app.status": TIER_S,
     "app.list": TIER_S,
     "app.quit": TIER_S,
+    "browser.fork": TIER_S,
+    "browser.list": TIER_S,
+    "browser.destroy": TIER_S,
+    "browser.status": TIER_S,
+    "browser.bridge": TIER_S,
+    "browser.url": TIER_S,
+    "browser.takeover": TIER_S,
+    "browser.resume": TIER_S,
+    "browser.act": TIER_S,
+    "router.act": TIER_S,
     "a11y.tree": TIER_A,
     "a11y.query": TIER_A,
     "a11y.click": TIER_A,
@@ -101,6 +111,127 @@ class LocalRouter:
 
         target_app = app_hint or "system"
         has_a11y = ctx.get("has_a11y", True)  # Assume a11y available unless specified
+
+        # -------------------------------------------------------------
+        # Tier S: Ephemeral Browser Worker & Unified Bridge (Native API/CLI)
+        # -------------------------------------------------------------
+        if re.search(r"\b(fork browser|spawn browser|ephemeral browser|clone browser)\b", task_lower):
+            url_m = re.search(r"(https?://[^\s'\"\)]+)", task)
+            args_bf: Dict[str, Any] = {"headless": "headless" in task_lower}
+            if url_m:
+                args_bf["url"] = url_m.group(1)
+            for b_flav in ["brave", "chrome", "chromium", "edge", "firefox"]:
+                if re.search(rf"\b{b_flav}\b", task_lower):
+                    args_bf["browser"] = b_flav
+                    break
+            return RouteDecision(
+                ok=True,
+                task=task,
+                lane=TIER_S,
+                tool_id="browser.fork",
+                args=args_bf,
+                confidence=0.98,
+                probabilities={"S": 0.98, "A": 0.02, "B": 0.0, "C": 0.0, "D": 0.0},
+                rationale="Ephemeral browser worker creation routes directly to Tier S native browser adapter.",
+                fallback_lane=None,
+            )
+
+        if re.search(r"\b(destroy|purge)\b.*\b(browser|worker|workers)\b|\bdestroy\s+(bwrk_[a-zA-Z0-9_]+|all)\b", task_lower):
+            wid_m = re.search(r"\b(bwrk_[a-zA-Z0-9_]+|all)\b", task_lower)
+            wid = wid_m.group(1) if wid_m else "all"
+            return RouteDecision(
+                ok=True,
+                task=task,
+                lane=TIER_S,
+                tool_id="browser.destroy",
+                args={"worker_id": wid},
+                confidence=0.98,
+                probabilities={"S": 0.98, "A": 0.02, "B": 0.0, "C": 0.0, "D": 0.0},
+                rationale="Ephemeral browser worker teardown routes directly to Tier S native browser adapter.",
+                fallback_lane=None,
+            )
+
+        if re.search(r"\b(list|show)\b.*\b(browser workers|ephemeral browsers|workers)\b", task_lower):
+            return RouteDecision(
+                ok=True,
+                task=task,
+                lane=TIER_S,
+                tool_id="browser.list",
+                args={},
+                confidence=0.98,
+                probabilities={"S": 0.98, "A": 0.02, "B": 0.0, "C": 0.0, "D": 0.0},
+                rationale="Worker enumeration routes directly to Tier S native browser adapter.",
+                fallback_lane=None,
+            )
+
+        if re.search(r"\b(browser status|sao status|check browser bridge|check browser status)\b", task_lower):
+            return RouteDecision(
+                ok=True,
+                task=task,
+                lane=TIER_S,
+                tool_id="browser.status",
+                args={},
+                confidence=0.98,
+                probabilities={"S": 0.98, "A": 0.02, "B": 0.0, "C": 0.0, "D": 0.0},
+                rationale="Browser status inspection routes directly to Tier S native browser adapter.",
+                fallback_lane=None,
+            )
+
+        if re.search(r"\b(unified browser url|browser url|sao url|webrtc url)\b", task_lower):
+            return RouteDecision(
+                ok=True,
+                task=task,
+                lane=TIER_S,
+                tool_id="browser.url",
+                args={},
+                confidence=0.99,
+                probabilities={"S": 0.99, "A": 0.01, "B": 0.0, "C": 0.0, "D": 0.0},
+                rationale="Canonical browser URL query routes directly to Tier S native browser adapter.",
+                fallback_lane=None,
+            )
+
+        if re.search(r"\b(takeover browser|owner takeover|lock browser|pause agents on browser)\b", task_lower):
+            return RouteDecision(
+                ok=True,
+                task=task,
+                lane=TIER_S,
+                tool_id="browser.takeover",
+                args={},
+                confidence=0.98,
+                probabilities={"S": 0.98, "A": 0.02, "B": 0.0, "C": 0.0, "D": 0.0},
+                rationale="Owner browser takeover routes directly to Tier S SAO control API.",
+                fallback_lane=None,
+            )
+
+        if re.search(r"\b(resume browser|resume agents|unlock browser)\b", task_lower):
+            return RouteDecision(
+                ok=True,
+                task=task,
+                lane=TIER_S,
+                tool_id="browser.resume",
+                args={},
+                confidence=0.98,
+                probabilities={"S": 0.98, "A": 0.02, "B": 0.0, "C": 0.0, "D": 0.0},
+                rationale="Browser agent resume routes directly to Tier S SAO control API.",
+                fallback_lane=None,
+            )
+
+        if re.search(r"\b(bridge browser|sao bridge|route browser)\b", task_lower):
+            url_m = re.search(r"(https?://[^\s'\"\)]+)", task)
+            args_bb: Dict[str, Any] = {"headless": True, "prefer_ephemeral": "shared" not in task_lower}
+            if url_m:
+                args_bb["url"] = url_m.group(1)
+            return RouteDecision(
+                ok=True,
+                task=task,
+                lane=TIER_S,
+                tool_id="browser.bridge",
+                args=args_bb,
+                confidence=0.97,
+                probabilities={"S": 0.97, "A": 0.03, "B": 0.0, "C": 0.0, "D": 0.0},
+                rationale="Unified browser bridge routing dispatches via Tier S SAO/ephemeral bridge.",
+                fallback_lane=None,
+            )
 
         # -------------------------------------------------------------
         # Tier S: Lifecycle / Native CLI
@@ -418,6 +549,130 @@ class LocalRouter:
             except SchemaValidationError as e:
                 return False, f"Schema validation error: {e}"
         return True, None
+
+    def act(
+        self,
+        task: str,
+        context: Optional[Dict[str, Any]] = None,
+        exec_fn=None,
+    ) -> Dict[str, Any]:
+        """Closed-loop pipeline executor: observe -> route -> act -> verify -> recover."""
+        t0 = time.perf_counter()
+        ctx = dict(context or {})
+
+        # 1. Observe & Route
+        decision = self.route(task, ctx)
+        is_valid, schema_err = self.validate_decision(decision)
+        if not decision.ok or not is_valid:
+            return {
+                "ok": False,
+                "action": "router.act",
+                "task": task,
+                "error": schema_err or decision.error or "Failed to route task",
+                "decision": decision.to_dict(),
+                "latency_ms": round((time.perf_counter() - t0) * 1000.0, 2),
+            }
+
+        # 2. Act
+        if not exec_fn:
+            return {
+                "ok": True,
+                "action": "router.act",
+                "task": task,
+                "decision": decision.to_dict(),
+                "executed": False,
+                "message": "Dry-run / plan generated (no exec_fn provided)",
+                "latency_ms": round((time.perf_counter() - t0) * 1000.0, 2),
+            }
+
+        initial_tool = decision.tool_id
+        initial_args = dict(decision.args)
+        initial_res = exec_fn(initial_tool, initial_args)
+
+        # 3. Verify
+        action_succeeded = bool(
+            initial_res
+            and (initial_res.get("ok") is not False)
+            and ("error" not in initial_res or not initial_res.get("error"))
+        )
+
+        if action_succeeded:
+            return {
+                "ok": True,
+                "action": "router.act",
+                "task": task,
+                "lane": decision.lane,
+                "tool_id": initial_tool,
+                "args": initial_args,
+                "recovered": False,
+                "result": initial_res,
+                "latency_ms": round((time.perf_counter() - t0) * 1000.0, 2),
+            }
+
+        # 4. Recover (Automatic Tier Stepdown)
+        recovery_attempt = None
+        recovered = False
+        final_tool = initial_tool
+        final_args = initial_args
+        final_res = initial_res
+        final_lane = decision.lane
+
+        # If Tier A action (a11y.click or a11y.query) failed:
+        if decision.lane == TIER_A and decision.tool_id in ("a11y.click", "a11y.query"):
+            app_target = initial_args.get("app", "system")
+            name_query = initial_args.get("name", "")
+            if not name_query:
+                m_q = re.search(
+                    r"\b(?:click|press|find|locate)\s+['\"]?([^'\"\n]+?)['\"]?(?:\s+in|\s+button|\s+text|$)",
+                    task,
+                    re.IGNORECASE,
+                )
+                name_query = m_q.group(1).strip() if m_q else "button"
+
+            if decision.tool_id == "a11y.click":
+                fallback_tool = "vision.click"
+                fallback_args = {
+                    "app": app_target,
+                    "query": name_query,
+                    "button": initial_args.get("button", "left"),
+                }
+            else:
+                fallback_tool = "vision.find"
+                fallback_args = {
+                    "app": app_target,
+                    "query": name_query,
+                }
+
+            recovery_attempt = {
+                "from_lane": TIER_A,
+                "to_lane": TIER_C,
+                "fallback_tool": fallback_tool,
+                "fallback_args": fallback_args,
+                "reason": initial_res.get("error", "Tier A DOM element resolution failed"),
+            }
+
+            fallback_res = exec_fn(fallback_tool, fallback_args)
+            if fallback_res and fallback_res.get("ok"):
+                recovered = True
+                final_tool = fallback_tool
+                final_args = fallback_args
+                final_res = fallback_res
+                final_lane = TIER_C
+
+        dt_ms = round((time.perf_counter() - t0) * 1000.0, 2)
+        return {
+            "ok": recovered or action_succeeded,
+            "action": "router.act",
+            "task": task,
+            "lane": final_lane,
+            "tool_id": final_tool,
+            "args": final_args,
+            "initial_failure": initial_res if not action_succeeded else None,
+            "recovered": recovered,
+            "recovery": recovery_attempt,
+            "result": final_res,
+            "latency_ms": dt_ms,
+        }
 
 
 BENCHMARK_TASKS: List[Dict[str, Any]] = [

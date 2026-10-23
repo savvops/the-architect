@@ -55,6 +55,24 @@ class TestRouter(unittest.TestCase):
         valid, err = self.router.validate_decision(dec)
         self.assertTrue(valid, err)
 
+    def test_route_tier_s_browser_bridge_and_workers(self):
+        for prompt, expected_tool in [
+            ("fork browser brave headless https://example.com", "browser.fork"),
+            ("destroy all browser workers", "browser.destroy"),
+            ("list browser workers", "browser.list"),
+            ("check browser status", "browser.status"),
+            ("get unified browser url", "browser.url"),
+            ("takeover browser", "browser.takeover"),
+            ("resume browser", "browser.resume"),
+            ("bridge browser https://example.com", "browser.bridge"),
+        ]:
+            dec = self.router.route(prompt)
+            self.assertTrue(dec.ok, f"Failed routing: {prompt}")
+            self.assertEqual(dec.lane, TIER_S)
+            self.assertEqual(dec.tool_id, expected_tool)
+            valid, err = self.router.validate_decision(dec)
+            self.assertTrue(valid, f"Validation failed for {prompt}: {err}")
+
     def test_route_tier_a_desktop_dom(self):
         # Tree dump
         dec = self.router.route("dump tree for explorer")
@@ -151,6 +169,52 @@ class TestRouter(unittest.TestCase):
         self.assertEqual(dec.args["y"], 420)
         valid, err = self.router.validate_decision(dec)
         self.assertTrue(valid, err)
+
+    def test_pipeline_act_direct_success(self):
+        # When first-choice tool succeeds, pipeline completes without recovery
+        exec_calls = []
+
+        def mock_exec(tool_id, args):
+            exec_calls.append((tool_id, args))
+            return {"ok": True, "action": tool_id, "evidence": {"clicked": True}}
+
+        res = self.router.act("click Save button in notepad", exec_fn=mock_exec)
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["tool_id"], "a11y.click")
+        self.assertEqual(res["lane"], TIER_A)
+        self.assertFalse(res["recovered"])
+        self.assertEqual(len(exec_calls), 1)
+
+    def test_pipeline_act_recovery_stepdown_to_vision(self):
+        # When Tier A fails, pipeline steps down to Tier C (vision.click) and recovers
+        exec_calls = []
+
+        def mock_exec(tool_id, args):
+            exec_calls.append((tool_id, args))
+            if tool_id == "a11y.click":
+                return {"ok": False, "error": "no element matched query"}
+            elif tool_id == "vision.click":
+                return {"ok": True, "action": "vision.click", "evidence": {"grounded": True}}
+            return {"ok": False, "error": "unknown"}
+
+        res = self.router.act("click Save button in notepad", exec_fn=mock_exec)
+        self.assertTrue(res["ok"])
+        self.assertTrue(res["recovered"])
+        self.assertEqual(res["lane"], TIER_C)
+        self.assertEqual(res["tool_id"], "vision.click")
+        self.assertEqual(len(exec_calls), 2)
+        self.assertEqual(exec_calls[0][0], "a11y.click")
+        self.assertEqual(exec_calls[1][0], "vision.click")
+        self.assertIsNotNone(res["recovery"])
+        self.assertEqual(res["recovery"]["from_lane"], TIER_A)
+        self.assertEqual(res["recovery"]["to_lane"], TIER_C)
+
+    def test_pipeline_act_dry_run_without_exec_fn(self):
+        res = self.router.act("type Hello World into notepad")
+        self.assertTrue(res["ok"])
+        self.assertFalse(res["executed"])
+        self.assertIn("decision", res)
+        self.assertEqual(res["decision"]["tool_id"], "app.type")
 
     def test_run_benchmark(self):
         rep = run_benchmark(self.router)

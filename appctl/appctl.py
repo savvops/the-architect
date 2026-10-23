@@ -78,10 +78,13 @@ try:
         destroy_browser_worker,
         browser_status,
         bridge_browser,
+        takeover_browser,
+        resume_browser,
         SAOBrowserBridge,
         get_unified_browser_url,
         CDPClient,
         load_cookie_file,
+        act_on_worker,
     )
 except ImportError:
     try:
@@ -92,13 +95,16 @@ except ImportError:
             destroy_browser_worker,
             browser_status,
             bridge_browser,
+            takeover_browser,
+            resume_browser,
             SAOBrowserBridge,
             get_unified_browser_url,
             CDPClient,
             load_cookie_file,
+            act_on_worker,
         )
     except ImportError:
-        detect_browsers = fork_browser = list_browser_workers = destroy_browser_worker = browser_status = bridge_browser = SAOBrowserBridge = get_unified_browser_url = CDPClient = load_cookie_file = None
+        detect_browsers = fork_browser = list_browser_workers = destroy_browser_worker = browser_status = bridge_browser = takeover_browser = resume_browser = SAOBrowserBridge = get_unified_browser_url = CDPClient = load_cookie_file = act_on_worker = None
 
 OS = platform.system()  # Windows | Darwin | Linux
 
@@ -748,6 +754,11 @@ def win_focus(app):
 
 
 def _win_see_raw(target, output_path=None):
+    if isinstance(target, str):
+        res = _win_resolve_target(target)
+        if not res:
+            raise ValueError(f"no visible window for '{target}'")
+        target = res
     target_hwnd = target["hwnd"]
     target_pid = target["pid"]
     target_title = target["title"]
@@ -832,6 +843,11 @@ def win_see(app, output_path=None):
 
 
 def _win_type_raw(target, text):
+    if isinstance(target, str):
+        res = _win_resolve_target(target)
+        if not res:
+            raise ValueError(f"no visible window for '{target}'")
+        target = res
     fore = _user32.GetForegroundWindow()
     if fore != target["hwnd"] and _user32.GetAncestor(fore, 2) != target["hwnd"]:
         _win_focus_window(target["hwnd"])
@@ -891,6 +907,11 @@ def win_type(app, text):
 
 
 def _win_key_raw(target, key_name):
+    if isinstance(target, str):
+        res = _win_resolve_target(target)
+        if not res:
+            raise ValueError(f"no visible window for '{target}'")
+        target = res
     fore = _user32.GetForegroundWindow()
     if fore != target["hwnd"] and _user32.GetAncestor(fore, 2) != target["hwnd"]:
         _win_focus_window(target["hwnd"])
@@ -981,6 +1002,11 @@ def win_key(app, key_name):
 
 
 def _win_click_raw(target, x, y, button="left"):
+    if isinstance(target, str):
+        res = _win_resolve_target(target)
+        if not res:
+            raise ValueError(f"no visible window for '{target}'")
+        target = res
     fore = _user32.GetForegroundWindow()
     if fore != target["hwnd"] and _user32.GetAncestor(fore, 2) != target["hwnd"]:
         _win_focus_window(target["hwnd"])
@@ -1669,7 +1695,8 @@ def run_exec(tool_id, args_json_str=None):
         temp_file = None
         if not os.path.isfile(target):
             temp_file = os.path.abspath(f"temp_ocr_{int(time.time()*1000)}.png")
-            h["see"](target, temp_file)
+            see_act = h.get("see_raw") or h["see"]
+            see_act(target, temp_file)
             target = temp_file
         try:
             res = ocr_image(target)
@@ -1683,22 +1710,24 @@ def run_exec(tool_id, args_json_str=None):
     elif action == "vision_find":
         if not run_vision_find:
             return fail("exec", "vision module not available")
+        see_act = h.get("see_raw") or h["see"]
         res = run_vision_find(
             validated_args["app"],
             validated_args["query"],
             resolve_fn=h.get("resolve"),
-            see_fn=lambda a, o: h["see"](a, o),
+            see_fn=see_act,
         )
         return emit(res, code=0 if res.get("ok") else 1)
     elif action == "vision_click":
         if not run_vision_click:
             return fail("exec", "vision module not available")
+        see_act = h.get("see_raw") or h["see"]
         res = run_vision_click(
             validated_args["app"],
             validated_args["query"],
             button=validated_args.get("button", "left"),
             resolve_fn=h.get("resolve"),
-            see_fn=lambda a, o: h["see"](a, o),
+            see_fn=see_act,
             click_fn=h.get("click_raw"),
             focus_fn=h.get("focus_raw"),
         )
@@ -1756,6 +1785,98 @@ def run_exec(tool_id, args_json_str=None):
         if not get_unified_browser_url:
             return fail("exec", "browser module not available")
         res = get_unified_browser_url(sao_url=validated_args.get("sao_url"))
+        return emit(res, code=0 if res.get("ok") else 1)
+    elif action == "browser_takeover":
+        if not takeover_browser:
+            return fail("exec", "browser module not available")
+        res = takeover_browser(sao_url=validated_args.get("sao_url"))
+        return emit(res, code=0 if res.get("ok") else 1)
+    elif action == "browser_resume":
+        if not resume_browser:
+            return fail("exec", "browser module not available")
+        res = resume_browser(sao_url=validated_args.get("sao_url"))
+        return emit(res, code=0 if res.get("ok") else 1)
+    elif action == "act":
+        if not LocalRouter:
+            return fail("exec", "router module not available")
+        r = LocalRouter()
+        ctx = validated_args.get("context", {})
+        def _exec_wrapper(tid, targs):
+            try:
+                tool_def = registry.get(tid) if registry else None
+                if not tool_def:
+                    return {"ok": False, "error": f"Tool '{tid}' not found"}
+                t_action = tool_def.get("action")
+                if t_action == "a11y_click" and run_a11y_click:
+                    return run_a11y_click(
+                        targs["app"],
+                        role=targs.get("role"),
+                        name=targs.get("name"),
+                        automation_id=targs.get("id"),
+                        button=targs.get("button", "left"),
+                        resolve_fn=h.get("resolve"),
+                        click_fn=h.get("click_raw"),
+                        focus_fn=h.get("focus_raw"),
+                    )
+                elif t_action == "a11y_query" and run_a11y_query:
+                    return run_a11y_query(
+                        targs["app"],
+                        role=targs.get("role"),
+                        name=targs.get("name"),
+                        automation_id=targs.get("id"),
+                        resolve_fn=h.get("resolve"),
+                    )
+                elif t_action == "vision_click" and run_vision_click:
+                    see_act = h.get("see_raw") or h.get("see")
+                    return run_vision_click(
+                        targs["app"],
+                        targs["query"],
+                        button=targs.get("button", "left"),
+                        resolve_fn=h.get("resolve"),
+                        see_fn=see_act,
+                        click_fn=h.get("click_raw"),
+                        focus_fn=h.get("focus_raw"),
+                    )
+                elif t_action == "vision_find" and run_vision_find:
+                    see_act = h.get("see_raw") or h.get("see")
+                    return run_vision_find(
+                        targs["app"],
+                        targs["query"],
+                        resolve_fn=h.get("resolve"),
+                        see_fn=see_act,
+                    )
+                elif t_action == "key" and "key_raw" in h:
+                    t = h["resolve"](targs["app"]) if "resolve" in h else None
+                    h["key_raw"](t or targs["app"], targs.get("key"))
+                    return {"ok": True, "action": "key", "evidence": {"sent": True}}
+                elif t_action == "type" and "type_raw" in h:
+                    t = h["resolve"](targs["app"]) if "resolve" in h else None
+                    chars = h["type_raw"](t or targs["app"], targs.get("text", ""))
+                    return {"ok": True, "action": "type", "evidence": {"typed": True, "chars": chars}}
+                elif t_action == "open" and "open" in h:
+                    return h["open"](targs["app"], targs.get("args", []))
+                elif t_action == "quit" and "quit" in h:
+                    return h["quit"](targs["app"], targs.get("force", False))
+                return {"ok": False, "error": f"Unsupported tool '{tid}' in pipeline executor"}
+            except Exception as e:
+                return {"ok": False, "error": str(e)}
+
+        res = r.act(validated_args["task"], context=ctx, exec_fn=_exec_wrapper)
+        return emit(res, code=0 if res.get("ok") else 1)
+    elif action == "browser_act":
+        if not act_on_worker:
+            return fail("exec", "browser module not available")
+        res = act_on_worker(
+            worker_id=validated_args["worker_id"],
+            action=validated_args["action"],
+            url=validated_args.get("url"),
+            selector=validated_args.get("selector"),
+            text=validated_args.get("text"),
+            expr=validated_args.get("expr"),
+            output=validated_args.get("output"),
+            x=validated_args.get("x"),
+            y=validated_args.get("y"),
+        )
         return emit(res, code=0 if res.get("ok") else 1)
     else:
         return fail("exec", f"unknown action '{action}' for tool '{tool_id}'")
@@ -1858,6 +1979,10 @@ def main():
     p.add_argument("task", help="task description to route")
     p.add_argument("--context-json", default=None, help="JSON context string")
 
+    p = sub.add_parser("act", help="execute a task through the closed-loop pipeline (observe -> route -> act -> verify -> recover)")
+    p.add_argument("task", help="task description to actuate")
+    p.add_argument("--context-json", default=None, help="JSON context string")
+
     p = sub.add_parser("benchmark", help="run the sub-1GB local router benchmark")
     p.add_argument("--json", action="store_true", help="output JSON")
 
@@ -1888,6 +2013,23 @@ def main():
 
     p_burl = b_sub.add_parser("url", help="display the unified browser WebRTC & CDP URLs")
     p_burl.add_argument("--sao-url", default=None, help="custom SAO browser URL")
+
+    p_btakeover = b_sub.add_parser("takeover", help="pause agents on SAO Browser for exclusive manual owner control")
+    p_btakeover.add_argument("--sao-url", default=None, help="custom SAO browser URL")
+
+    p_bresume = b_sub.add_parser("resume", help="resume autonomous agent operations on SAO Browser")
+    p_bresume.add_argument("--sao-url", default=None, help="custom SAO browser URL")
+
+    p_bact = b_sub.add_parser("act", help="execute CDP action on ephemeral browser worker")
+    p_bact.add_argument("worker_id", help="worker ID or PID")
+    p_bact.add_argument("browser_action_type", choices=["navigate", "screenshot", "dom", "click", "type", "eval"], help="CDP action")
+    p_bact.add_argument("--url", default=None, help="URL to navigate to")
+    p_bact.add_argument("--selector", default=None, help="CSS selector for click/type")
+    p_bact.add_argument("--text", default=None, help="text to type")
+    p_bact.add_argument("--expr", default=None, help="JS expression to evaluate")
+    p_bact.add_argument("--output", default=None, help="output PNG path for screenshot")
+    p_bact.add_argument("--x", type=int, default=None, help="X coordinate for raw click")
+    p_bact.add_argument("--y", type=int, default=None, help="Y coordinate for raw click")
 
     a = ap.parse_args()
 
@@ -1948,7 +2090,8 @@ def main():
         temp_file = None
         if not os.path.isfile(target_path):
             temp_file = os.path.abspath(f"temp_ocr_{int(time.time()*1000)}.png")
-            h["see"](target_path, temp_file)
+            see_act = h.get("see_raw") or h["see"]
+            see_act(target_path, temp_file)
             target_path = temp_file
         try:
             res = ocr_image(target_path)
@@ -1963,23 +2106,25 @@ def main():
     elif a.action == "vision-find":
         if not run_vision_find:
             fail("vision-find", "vision module not available")
+        see_act = h.get("see_raw") or h["see"]
         res = run_vision_find(
             a.target,
             a.query,
             resolve_fn=h.get("resolve"),
-            see_fn=lambda app, out: h["see"](app, out),
+            see_fn=see_act,
         )
         emit(res, code=0 if res.get("ok") else 1)
         return
     elif a.action == "vision-click":
         if not run_vision_click:
             fail("vision-click", "vision module not available")
+        see_act = h.get("see_raw") or h["see"]
         res = run_vision_click(
             a.app,
             a.query,
             button=a.button,
             resolve_fn=h.get("resolve"),
-            see_fn=lambda app, out: h["see"](app, out),
+            see_fn=see_act,
             click_fn=h.get("click_raw"),
             focus_fn=h.get("focus_raw"),
         )
@@ -1997,6 +2142,74 @@ def main():
         if err:
             out["schema_error"] = err
         emit(out, code=0 if dec.ok and is_valid else 1)
+        return
+    elif a.action == "act":
+        if not LocalRouter:
+            fail("act", "router module not available")
+        r = LocalRouter()
+        ctx = json.loads(a.context_json) if a.context_json else {}
+        def _exec_cli(tid, targs):
+            try:
+                tool_def = registry.get(tid) if registry else None
+                if not tool_def:
+                    return {"ok": False, "error": f"Tool '{tid}' not found"}
+                t_action = tool_def.get("action")
+                if t_action == "a11y_click" and run_a11y_click:
+                    return run_a11y_click(
+                        targs["app"],
+                        role=targs.get("role"),
+                        name=targs.get("name"),
+                        automation_id=targs.get("id"),
+                        button=targs.get("button", "left"),
+                        resolve_fn=h.get("resolve"),
+                        click_fn=h.get("click_raw"),
+                        focus_fn=h.get("focus_raw"),
+                    )
+                elif t_action == "a11y_query" and run_a11y_query:
+                    return run_a11y_query(
+                        targs["app"],
+                        role=targs.get("role"),
+                        name=targs.get("name"),
+                        automation_id=targs.get("id"),
+                        resolve_fn=h.get("resolve"),
+                    )
+                elif t_action == "vision_click" and run_vision_click:
+                    see_act = h.get("see_raw") or h.get("see")
+                    return run_vision_click(
+                        targs["app"],
+                        targs["query"],
+                        button=targs.get("button", "left"),
+                        resolve_fn=h.get("resolve"),
+                        see_fn=see_act,
+                        click_fn=h.get("click_raw"),
+                        focus_fn=h.get("focus_raw"),
+                    )
+                elif t_action == "vision_find" and run_vision_find:
+                    see_act = h.get("see_raw") or h.get("see")
+                    return run_vision_find(
+                        targs["app"],
+                        targs["query"],
+                        resolve_fn=h.get("resolve"),
+                        see_fn=see_act,
+                    )
+                elif t_action == "key" and "key_raw" in h:
+                    t = h["resolve"](targs["app"]) if "resolve" in h else None
+                    h["key_raw"](t or targs["app"], targs.get("key"))
+                    return {"ok": True, "action": "key", "evidence": {"sent": True}}
+                elif t_action == "type" and "type_raw" in h:
+                    t = h["resolve"](targs["app"]) if "resolve" in h else None
+                    chars = h["type_raw"](t or targs["app"], targs.get("text", ""))
+                    return {"ok": True, "action": "type", "evidence": {"typed": True, "chars": chars}}
+                elif t_action == "open" and "open" in h:
+                    return h["open"](targs["app"], targs.get("args", []))
+                elif t_action == "quit" and "quit" in h:
+                    return h["quit"](targs["app"], targs.get("force", False))
+                return {"ok": False, "error": f"Unsupported tool '{tid}' in pipeline executor"}
+            except Exception as e:
+                return {"ok": False, "error": str(e)}
+
+        res = r.act(a.task, context=ctx, exec_fn=_exec_cli)
+        emit(res, code=0 if res.get("ok") else 1)
         return
     elif a.action == "benchmark":
         if not run_benchmark:
@@ -2046,6 +2259,34 @@ def main():
             if not get_unified_browser_url:
                 fail("browser", "browser module not available")
             res = get_unified_browser_url(sao_url=a.sao_url)
+            emit(res, code=0 if res.get("ok") else 1)
+            return
+        elif a.browser_action == "takeover":
+            if not takeover_browser:
+                fail("browser", "browser module not available")
+            res = takeover_browser(sao_url=a.sao_url)
+            emit(res, code=0 if res.get("ok") else 1)
+            return
+        elif a.browser_action == "resume":
+            if not resume_browser:
+                fail("browser", "browser module not available")
+            res = resume_browser(sao_url=a.sao_url)
+            emit(res, code=0 if res.get("ok") else 1)
+            return
+        elif a.browser_action == "act":
+            if not act_on_worker:
+                fail("browser", "browser module not available")
+            res = act_on_worker(
+                worker_id=a.worker_id,
+                action=a.browser_action_type,
+                url=a.url,
+                selector=a.selector,
+                text=a.text,
+                expr=a.expr,
+                output=a.output,
+                x=a.x,
+                y=a.y,
+            )
             emit(res, code=0 if res.get("ok") else 1)
             return
 

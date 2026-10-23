@@ -241,9 +241,14 @@ def run_vision_find(
     else:
         if not see_fn:
             return {"ok": False, "error": "Snapshot function (see) required for app target"}
+        target = resolve_fn(app_or_image) if resolve_fn else None
+        target_param = target if target else app_or_image
         temp_snapshot = os.path.abspath(f"temp_vision_{int(time.time() * 1000)}.png")
-        see_res = see_fn(app_or_image, temp_snapshot)
-        if not see_res or not os.path.exists(temp_snapshot):
+        try:
+            see_fn(target_param, temp_snapshot)
+        except Exception as e:
+            return {"ok": False, "error": f"Failed to capture snapshot of app '{app_or_image}': {e}"}
+        if not os.path.exists(temp_snapshot):
             return {"ok": False, "error": f"Failed to capture snapshot of app '{app_or_image}'"}
         img_path = temp_snapshot
 
@@ -291,15 +296,27 @@ def run_vision_click(
     if not see_fn or not click_fn:
         return {"ok": False, "error": "see and click handlers required for vision-click"}
 
+    target = resolve_fn(app) if resolve_fn else None
+    target_param = target if target else app
+
     temp_snapshot = os.path.abspath(f"temp_vision_{int(time.time() * 1000)}.png")
     try:
         # 1. Bring to focus if handler provided
         if focus_fn:
-            focus_fn(app)
+            try:
+                focus_fn(target["hwnd"] if isinstance(target, dict) and "hwnd" in target else target_param)
+            except Exception:
+                try:
+                    focus_fn(app)
+                except Exception:
+                    pass
             time.sleep(0.1)
 
         # 2. Capture snapshot
-        see_fn(app, temp_snapshot)
+        try:
+            see_fn(target_param, temp_snapshot)
+        except Exception as e:
+            return {"ok": False, "error": f"Failed to capture window snapshot for '{app}': {e}"}
         if not os.path.exists(temp_snapshot):
             return {"ok": False, "error": f"Failed to capture window snapshot for '{app}'"}
 
@@ -316,7 +333,7 @@ def run_vision_click(
         cx, cy = grounded["center"]
 
         # 4. Actuate click at relative center
-        click_fn(app, cx, cy, button=button)
+        click_fn(target_param, cx, cy, button=button)
 
         return {
             "ok": True,
