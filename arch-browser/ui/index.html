@@ -18,8 +18,9 @@
       --danger: #ef4444;
       --success: #22c55e;
       --warn: #f59e0b;
-      --glass: rgba(17, 24, 39, 0.85);
-      --glass-pill: rgba(30, 41, 59, 0.88);
+      --glass: rgba(17, 24, 39, 0.88);
+      --glass-pill: rgba(30, 41, 59, 0.9);
+      --sidebar-width: 380px;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); }
@@ -150,34 +151,28 @@
       overflow: hidden;
       min-width: 0;
     }
-    #screenMount {
+    #desktopFrame {
       width: 100%;
       height: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      position: relative;
+      border: none;
+      background: #000;
+      overflow: hidden;
       touch-action: none;
-      user-select: none;
-    }
-    #screenMount canvas {
-      max-width: 100%;
-      max-height: 100%;
-      box-shadow: 0 0 35px rgba(0,0,0,0.85);
-      object-fit: contain;
     }
 
-    /* Floating Virtual Remote Pointer Cursor */
+    /* Floating Virtual Remote Pointer Cursor (Exact Spine Monitor Cursor) */
     #remoteCursor {
-      position: absolute;
+      position: fixed;
+      z-index: 42;
+      left: 0;
+      top: 0;
       width: 22px;
       height: 28px;
-      pointer-events: none;
-      z-index: 35;
-      transform: translate3d(-100px, -100px, 0);
-      filter: drop-shadow(0 2px 5px rgba(0,0,0,0.9));
       opacity: 0;
-      transition: opacity 0.2s;
+      pointer-events: none;
+      transform: translate3d(-50px, -50px, 0);
+      transition: opacity 0.14s ease;
+      filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.9));
     }
     #remoteCursor.visible { opacity: 1; }
     #remoteCursor svg { width: 100%; height: 100%; display: block; }
@@ -202,10 +197,10 @@
       position: absolute;
       left: max(16px, env(safe-area-inset-left));
       bottom: max(16px, env(safe-area-inset-bottom));
-      width: 116px;
-      height: 116px;
+      width: 120px;
+      height: 120px;
       border-radius: 50%;
-      background: rgba(15, 23, 42, 0.78);
+      background: rgba(15, 23, 42, 0.82);
       backdrop-filter: blur(14px);
       border: 1.5px solid rgba(255, 255, 255, 0.16);
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.65), inset 0 0 16px rgba(56, 189, 248, 0.08);
@@ -217,8 +212,8 @@
       user-select: none;
     }
     #joystickKnob {
-      width: 48px;
-      height: 48px;
+      width: 50px;
+      height: 50px;
       border-radius: 50%;
       background: radial-gradient(circle at 35% 35%, #60a5fa, #2563eb);
       box-shadow: 0 4px 14px rgba(37, 99, 235, 0.6), inset 0 2px 4px rgba(255, 255, 255, 0.45);
@@ -249,7 +244,7 @@
       bottom: max(100px, env(safe-area-inset-bottom));
       width: 52px;
       height: 144px;
-      background: rgba(15, 23, 42, 0.82);
+      background: rgba(15, 23, 42, 0.85);
       backdrop-filter: blur(14px);
       border: 1.5px solid rgba(255, 255, 255, 0.16);
       border-radius: 26px;
@@ -330,8 +325,8 @@
       border-color: #fff;
       box-shadow: 0 0 20px var(--accent);
     }
-    #btnLeftClick { width: 86px; }
-    #btnRightClick { width: 64px; background: rgba(30, 41, 59, 0.8); }
+    #btnLeftClick { width: 88px; }
+    #btnRightClick { width: 66px; background: rgba(30, 41, 59, 0.8); }
 
     /* HUD Toggle Pill */
     #hudTogglePill {
@@ -361,7 +356,7 @@
       position: absolute;
       left: max(16px, env(safe-area-inset-left));
       right: max(16px, env(safe-area-inset-right));
-      bottom: max(150px, env(safe-area-inset-bottom));
+      bottom: max(160px, env(safe-area-inset-bottom));
       z-index: 45;
       display: flex;
       flex-direction: column;
@@ -378,7 +373,7 @@
       display: flex;
       align-items: center;
       gap: 6px;
-      background: rgba(15, 23, 42, 0.92);
+      background: rgba(15, 23, 42, 0.94);
       backdrop-filter: blur(16px);
       border: 1px solid var(--border-bright);
       border-radius: 14px;
@@ -417,20 +412,20 @@
     }
     .type-box:focus { border-color: var(--accent); }
 
-    /* Off-screen textarea for mobile native keyboard invocation */
+    /* Hidden input for triggering mobile device native keyboard */
     #mobileHiddenInput {
       position: fixed;
-      left: 0;
-      top: -100px;
-      width: 20px;
-      height: 20px;
-      opacity: 0;
-      pointer-events: none;
+      left: 50%;
+      top: 1px;
+      width: 2px;
+      height: 2px;
+      opacity: 0.01;
+      z-index: 30;
     }
 
-    /* --- Right Pane: Agent Cockpit Drawer (MUSE-STYLE SIDEBAR) --- */
+    /* --- Right Pane: Muse-Style Cockpit Drawer (OPEN BY DEFAULT) --- */
     #cockpitPane {
-      width: 380px;
+      width: var(--sidebar-width);
       background: var(--panel);
       border-left: 1px solid var(--border);
       display: flex;
@@ -440,7 +435,7 @@
       z-index: 45;
     }
     #cockpitPane.collapsed {
-      margin-right: -380px;
+      margin-right: calc(-1 * var(--sidebar-width));
     }
 
     /* Cockpit Tabs Header */
@@ -633,14 +628,13 @@
 
     <!-- Viewport Container (Left Side) -->
     <div id="viewportPane">
-      <div id="screenMount">
-        <!-- Native noVNC canvas attaches directly here -->
-      </div>
+      <!-- Live 60fps Desktop Mirror (Exact Spine Monitor Pattern: view_only=1 so controls never conflict) -->
+      <iframe id="desktopFrame" title="Arch Desktop" src="/novnc/vnc_lite.html?autoconnect=1&resize=scale&view_clip=0&view_only=1&path=websockify&reconnect=1" allow="clipboard-read; clipboard-write"></iframe>
 
-      <!-- Remote Pointer Cursor -->
-      <div id="remoteCursor">
+      <!-- Remote Pointer Cursor (Exact Spine Monitor SVG Pointer) -->
+      <div id="remoteCursor" aria-hidden="true">
         <svg viewBox="0 0 22 28" focusable="false">
-          <path d="M2 1.5v20.3l5.1-4.3 3.8 8.8 4.2-1.8-3.8-8.7h7.1z" fill="#fff" stroke="#0b0f17" stroke-width="2" stroke-linejoin="round"/>
+          <path d="M2 1.5v20.3l5.1-4.3 3.8 8.8 4.2-1.8-3.8-8.7h7.1z" fill="#fff" stroke="#111827" stroke-width="2" stroke-linejoin="round"/>
         </svg>
       </div>
 
@@ -650,17 +644,17 @@
           <input id="typeInput" class="type-box" placeholder="Type text and press Send..." onkeydown="if(event.key==='Enter')sendTypeBox()">
           <button class="k-btn" onclick="sendTypeBox()" style="background:var(--accent);color:#000">Send</button>
           <button class="k-btn" onclick="invokeNativeKeyboard()" title="Summon mobile touch keyboard">📱 Mobile</button>
-          <button class="k-btn" onclick="sendNamedKey('Escape', 0xff1b)">Esc</button>
-          <button class="k-btn" onclick="sendNamedKey('Tab', 0xff09)">Tab</button>
-          <button class="k-btn" onclick="sendNamedKey('Enter', 0xff0d)">Enter</button>
-          <button class="k-btn" onclick="sendNamedKey('Backspace', 0xff08)">⌫</button>
-          <button class="k-btn" onclick="sendNamedKey('ArrowUp', 0xff52)">▲</button>
-          <button class="k-btn" onclick="sendNamedKey('ArrowDown', 0xff54)">▼</button>
-          <button class="k-btn" onclick="sendNamedKey('ArrowLeft', 0xff51)">◀</button>
-          <button class="k-btn" onclick="sendNamedKey('ArrowRight', 0xff53)">▶</button>
-          <button class="k-btn" onclick="sendCtrl('c')">Ctrl+C</button>
-          <button class="k-btn" onclick="sendCtrl('v')">Ctrl+V</button>
-          <button class="k-btn" onclick="sendCtrl('a')">Ctrl+A</button>
+          <button class="k-btn" onclick="sendKey('Escape')">Esc</button>
+          <button class="k-btn" onclick="sendKey('Tab')">Tab</button>
+          <button class="k-btn" onclick="sendKey('Return')">Enter</button>
+          <button class="k-btn" onclick="sendKey('BackSpace')">⌫</button>
+          <button class="k-btn" onclick="sendKey('Up')">▲</button>
+          <button class="k-btn" onclick="sendKey('Down')">▼</button>
+          <button class="k-btn" onclick="sendKey('Left')">◀</button>
+          <button class="k-btn" onclick="sendKey('Right')">▶</button>
+          <button class="k-btn" onclick="sendShortcut('copy')">Ctrl+C</button>
+          <button class="k-btn" onclick="sendShortcut('paste')">Ctrl+V</button>
+          <button class="k-btn" onclick="sendShortcut('select_all')">Ctrl+A</button>
         </div>
       </div>
       <textarea id="mobileHiddenInput" autocapitalize="none" autocomplete="off" autocorrect="off" spellcheck="false" inputmode="text"></textarea>
@@ -680,23 +674,23 @@
 
         <!-- Tactile Scroll Wheel Strip -->
         <div id="scrollCluster" aria-label="Scroll wheel">
-          <button class="scroll-arrow-btn" onclick="sendScroll('up', 180)">▲</button>
+          <button class="scroll-arrow-btn" id="scrollUp">▲</button>
           <div id="scrollTrack">
             <div class="wheel-ridge"></div>
             <div class="wheel-ridge"></div>
             <div class="wheel-ridge"></div>
             <div class="wheel-ridge"></div>
           </div>
-          <button class="scroll-arrow-btn" onclick="sendScroll('down', 180)">▼</button>
+          <button class="scroll-arrow-btn" id="scrollDown">▼</button>
         </div>
 
         <!-- Left & Right Click Cluster -->
         <div id="clickCluster">
-          <button id="btnLeftClick" class="mouse-btn" type="button" aria-label="Left click">
+          <button id="leftClick" class="mouse-btn" type="button" aria-label="Left click">
             <span>L-CLICK</span>
             <small style="font-size:9px;opacity:0.7">Primary</small>
           </button>
-          <button id="btnRightClick" class="mouse-btn" type="button" aria-label="Right click">
+          <button id="rightClick" class="mouse-btn" type="button" aria-label="Right click">
             <span>RIGHT</span>
             <small style="font-size:9px;opacity:0.7">Context</small>
           </button>
@@ -781,8 +775,8 @@
 
   </div>
 
-  <!-- Unified Script -->
-  <script type="module">
+  <!-- Unified Script (Exact Spine Monitor Movement & OS Input Controller) -->
+  <script>
     // Extract token from #token=...
     const tokenMatch = location.hash.match(/token=([^&]+)/);
     if (tokenMatch) {
@@ -801,124 +795,144 @@
     async function apiPost(path, body = {}) {
       try {
         const res = await fetch(path, { method: 'POST', headers: apiHeaders(true), body: JSON.stringify(body) });
-        const data = await res.json().catch(() => ({}));
-        refreshStatus();
-        return data;
+        return await res.json().catch(() => ({}));
       } catch (err) {
-        console.error('API Error:', path, err);
         return { ok: false, error: String(err) };
       }
     }
     window.apiPost = apiPost;
 
-    // --- State & Coordinates ---
-    let isHuman = false;
-    let rfbClient = null;
-    let canvasEl = null;
-    let desktopWidth = 1280, desktopHeight = 800;
-    let cursorX = 640, cursorY = 400;
-    let domElementsCache = [];
-
-    // --- RFB WebSocket Connection ---
-    const screenMount = document.getElementById('screenMount');
-    const connDot = document.getElementById('connDot');
+    // --- Spine Monitor Pointer State & Canvas Tracking ---
+    const desktopFrame = document.getElementById('desktopFrame');
     const remoteCursor = document.getElementById('remoteCursor');
+    const connDot = document.getElementById('connDot');
+    let framebufferWidth = 1280, framebufferHeight = 800;
+    let remotePointerX = 640, remotePointerY = 400;
+    let connected = false;
+    let domElementsCache = [];
+    let isHuman = false;
 
-    async function initVnc() {
-      const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${wsProtocol}//${location.host}/websockify${token ? '?token=' + encodeURIComponent(token) : ''}`;
+    function desktopCanvas(doc = desktopFrame.contentDocument) {
+      if (!doc) return null;
+      return [...doc.querySelectorAll('canvas')].sort((a, b) => b.width * b.height - a.width * a.height)[0] || null;
+    }
 
+    function updateRemoteCursor(canvas = desktopCanvas()) {
+      if (!canvas || remotePointerX === null || remotePointerY === null || !framebufferWidth || !framebufferHeight) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = rect.left + Math.max(0, Math.min(framebufferWidth - 1, remotePointerX)) / framebufferWidth * rect.width;
+      const y = rect.top + Math.max(0, Math.min(framebufferHeight - 1, remotePointerY)) / framebufferHeight * rect.height;
+      remoteCursor.style.transform = `translate3d(${x - 2}px, ${y - 2}px, 0)`;
+      remoteCursor.classList.add('visible');
+    }
+
+    function syncRemotePointer(position) {
+      const x = /(?:^|\n)X=(-?\d+)/.exec(position || '');
+      const y = /(?:^|\n)Y=(-?\d+)/.exec(position || '');
+      if (!x || !y) return;
+      remotePointerX = Number(x[1]);
+      remotePointerY = Number(y[1]);
+      updateRemoteCursor();
+    }
+
+    async function checkMonitorBounds() {
       try {
-        const { default: RFB } = await import('/novnc/core/rfb.js');
-        rfbClient = new RFB(screenMount, wsUrl, {
-          credentials: { password: '' },
-          wsProtocols: ['binary']
-        });
-        rfbClient.scaleViewport = true;
-        rfbClient.resizeSession = false;
-
-        rfbClient.addEventListener('connect', () => {
-          connDot.className = 'brand-dot connected';
-          remoteCursor.classList.add('visible');
-          findCanvas();
-          updateCursorVisual();
-        });
-
-        rfbClient.addEventListener('disconnect', () => {
-          connDot.className = 'brand-dot error';
-          setTimeout(initVnc, 3000);
-        });
-
-        rfbClient.addEventListener('capabilities', () => {
-          findCanvas();
-        });
-      } catch (err) {
-        console.error('RFB initialization failed:', err);
-        connDot.className = 'brand-dot error';
-      }
-    }
-
-    function findCanvas() {
-      canvasEl = screenMount.querySelector('canvas');
-      if (canvasEl) {
-        desktopWidth = canvasEl.width || 1280;
-        desktopHeight = canvasEl.height || 800;
-      }
-    }
-
-    // --- Pointer Positioning & Remote Cursor ---
-    function updateCursorVisual() {
-      if (!canvasEl) findCanvas();
-      if (!canvasEl) return;
-      const rect = canvasEl.getBoundingClientRect();
-      const screenX = rect.left + (cursorX / desktopWidth) * rect.width;
-      const screenY = rect.top + (cursorY / desktopHeight) * rect.height;
-      remoteCursor.style.transform = `translate3d(${screenX}px, ${screenY}px, 0)`;
-    }
-
-    function sendRfbPointer(x, y, mask) {
-      if (rfbClient && typeof rfbClient._sendMouse === 'function') {
-        try {
-          rfbClient._sendMouse(x, y, mask);
-        } catch (_) {}
-      }
-    }
-
-    let moveApiThrottle = 0;
-    function setCursorPosition(x, y, sendPointer = true) {
-      cursorX = Math.max(0, Math.min(desktopWidth - 1, Math.round(x)));
-      cursorY = Math.max(0, Math.min(desktopHeight - 1, Math.round(y)));
-      updateCursorVisual();
-
-      if (sendPointer) {
-        sendRfbPointer(cursorX, cursorY, 0);
-
-        // Periodically sync with CDP in background
-        const now = Date.now();
-        if (now - moveApiThrottle > 250) {
-          moveApiThrottle = now;
-          fetch('/api/mouse/move', {
-            method: 'POST',
-            headers: apiHeaders(true),
-            body: JSON.stringify({ x: cursorX, y: cursorY })
-          }).catch(() => {});
+        const doc = desktopFrame.contentDocument;
+        if (doc) {
+          const canvas = desktopCanvas(doc);
+          if (canvas) {
+            framebufferWidth = canvas.width || 1280;
+            framebufferHeight = canvas.height || 800;
+            updateRemoteCursor(canvas);
+          }
         }
-      }
+        const health = await fetch('/control/health', { headers: apiHeaders(false) }).then(r => r.json()).catch(() => ({}));
+        if (health.ok) {
+          connected = true;
+          connDot.className = 'brand-dot connected';
+          syncRemotePointer(health.position);
+        } else {
+          connDot.className = 'brand-dot error';
+        }
+      } catch (_) {}
     }
 
-    window.addEventListener('resize', () => {
-      findCanvas();
-      updateCursorVisual();
+    desktopFrame.addEventListener('load', () => {
+      checkMonitorBounds();
+      setInterval(checkMonitorBounds, 2500);
     });
 
-    // --- Analog Stick (Virtual Joystick) ---
+    window.addEventListener('resize', () => {
+      updateRemoteCursor();
+    });
+
+    // --- Spine Movement Coalescing Queue (Smooth Analog Motion) ---
+    let pendingDX = 0, pendingDY = 0, moveBusy = false;
+    let vx = 0, vy = 0, lastFrame = performance.now(), movementFrame = null;
+    let pointerSpeedMultiplier = 1.0;
+
+    function queueMove(dx, dy) {
+      pendingDX += dx;
+      pendingDY += dy;
+      flushMove();
+    }
+
+    async function flushMove() {
+      if (moveBusy) return;
+      const dx = Math.max(-160, Math.min(160, Math.trunc(pendingDX)));
+      const dy = Math.max(-160, Math.min(160, Math.trunc(pendingDY)));
+      if (!dx && !dy) return;
+      pendingDX -= dx;
+      pendingDY -= dy;
+      moveBusy = true;
+
+      if (remotePointerX !== null && remotePointerY !== null) {
+        remotePointerX = Math.max(0, Math.min(framebufferWidth - 1, remotePointerX + dx));
+        remotePointerY = Math.max(0, Math.min(framebufferHeight - 1, remotePointerY + dy));
+        updateRemoteCursor();
+      }
+
+      try {
+        await apiPost('/control/move', { dx, dy });
+      } catch (_) {
+      } finally {
+        moveBusy = false;
+        if (Math.abs(pendingDX) >= 1 || Math.abs(pendingDY) >= 1) flushMove();
+      }
+    }
+
+    function movementLoop(now) {
+      const dt = Math.min(50, now - lastFrame) / 1000;
+      lastFrame = now;
+      if (vx || vy) {
+        queueMove(vx * dt, vy * dt);
+        movementFrame = requestAnimationFrame(movementLoop);
+      } else {
+        movementFrame = null;
+      }
+    }
+
+    function setVelocity(x, y, magnitude) {
+      const speed = (70 + 640 * magnitude * magnitude) * pointerSpeedMultiplier;
+      vx = magnitude > 0.08 ? x * speed * magnitude : 0;
+      vy = magnitude > 0.08 ? y * speed * magnitude : 0;
+      if (!movementFrame && (vx || vy)) {
+        lastFrame = performance.now();
+        movementFrame = requestAnimationFrame(movementLoop);
+      }
+    }
+
+    function stopVelocity() {
+      vx = 0;
+      vy = 0;
+    }
+
+    // --- Analog Stick Touch & Mouse Handlers ---
     const joystickWrapper = document.getElementById('joystickWrapper');
     const joystickKnob = document.getElementById('joystickKnob');
     let joystickActive = false;
     let joystickTouchId = null;
     let joyStartX = 0, joyStartY = 0;
-    let joyVx = 0, joyVy = 0;
-    let joyAnimFrame = null;
     const maxRadius = 42;
 
     function handleJoyStart(clientX, clientY, id = null) {
@@ -929,10 +943,6 @@
       joyStartY = rect.top + rect.height / 2;
       joystickWrapper.classList.add('active');
       handleJoyMove(clientX, clientY);
-      if (!joyAnimFrame) {
-        lastLoopTime = performance.now();
-        joyAnimFrame = requestAnimationFrame(joyLoop);
-      }
     }
 
     function handleJoyMove(clientX, clientY) {
@@ -948,44 +958,19 @@
 
       joystickKnob.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
 
-      const norm = Math.min(1, dist / maxRadius);
-      if (norm > 0.08) {
-        // Quadratic acceleration: slow micro-movements near center, rapid sweeps at edge
-        const speed = (70 + 640 * (norm * norm));
-        joyVx = (dx / dist) * speed * norm;
-        joyVy = (dy / dist) * speed * norm;
-      } else {
-        joyVx = 0;
-        joyVy = 0;
-      }
+      const magnitude = Math.min(1, dist / maxRadius);
+      const divisor = Math.max(magnitude, 0.001);
+      setVelocity((dx / maxRadius) / divisor, (dy / maxRadius) / divisor, magnitude);
     }
 
     function handleJoyEnd() {
       joystickActive = false;
       joystickTouchId = null;
-      joyVx = 0;
-      joyVy = 0;
+      stopVelocity();
       joystickKnob.style.transform = `translate3d(0, 0, 0)`;
       joystickWrapper.classList.remove('active');
     }
 
-    let lastLoopTime = performance.now();
-    function joyLoop(now) {
-      const dt = Math.min(0.05, (now - lastLoopTime) / 1000);
-      lastLoopTime = now;
-
-      if (joyVx || joyVy) {
-        setCursorPosition(cursorX + joyVx * dt, cursorY + joyVy * dt, true);
-      }
-
-      if (joystickActive || joyVx || joyVy) {
-        joyAnimFrame = requestAnimationFrame(joyLoop);
-      } else {
-        joyAnimFrame = null;
-      }
-    }
-
-    // Touch events for Joystick
     joystickWrapper.addEventListener('touchstart', (e) => {
       const touch = e.changedTouches[0];
       if (touch) handleJoyStart(touch.clientX, touch.clientY, touch.identifier);
@@ -1012,7 +997,6 @@
       }
     });
 
-    // Mouse events for Joystick
     joystickWrapper.addEventListener('mousedown', (e) => {
       handleJoyStart(e.clientX, e.clientY);
       const onMove = (ev) => handleJoyMove(ev.clientX, ev.clientY);
@@ -1025,97 +1009,101 @@
       window.addEventListener('mouseup', onUp);
     });
 
-    // --- Tactile Scroll Wheel Strip ---
-    const scrollTrack = document.getElementById('scrollTrack');
-    let scrollDragActive = false;
-    let scrollStartY = 0;
-    let scrollAccum = 0;
+    // --- Spine Button Bindings (Exact Spine Monitor Logic) ---
+    function bindButton(id, button, tapOnly = false) {
+      const el = document.getElementById(id);
+      let pressed = false;
+      let chain = Promise.resolve();
+      const send = action => {
+        chain = chain.then(() => apiPost('/control/button', { button, action })).catch(() => {});
+      };
+      const down = event => {
+        if (pressed) return;
+        pressed = true;
+        el.classList.add('active');
+        send(tapOnly ? 'click' : 'down');
+        if (navigator.vibrate) navigator.vibrate(10);
+        event.preventDefault();
+        event.stopPropagation();
+      };
+      const up = event => {
+        if (!pressed) return;
+        pressed = false;
+        el.classList.remove('active');
+        if (!tapOnly) send('up');
+        event.preventDefault();
+        event.stopPropagation();
+      };
+      el.addEventListener('pointerdown', down);
+      el.addEventListener('pointerup', up);
+      el.addEventListener('pointercancel', up);
+      el.addEventListener('lostpointercapture', event => { if (pressed) up(event); });
+    }
+    bindButton('leftClick', 1);
+    bindButton('rightClick', 3, true);
 
-    function handleScrollMove(deltaY) {
+    // --- Spine Scroll Bindings ---
+    function bindScroll(id, direction) {
+      const el = document.getElementById(id);
+      let timer = null;
+      const tick = () => apiPost('/control/scroll', { direction, amount: 1 }).catch(() => {});
+      const start = event => {
+        if (timer) return;
+        el.classList.add('active');
+        tick();
+        if (navigator.vibrate) navigator.vibrate(6);
+        timer = setInterval(tick, 180);
+        event.preventDefault();
+        event.stopPropagation();
+      };
+      const stop = event => {
+        el.classList.remove('active');
+        if (timer) clearInterval(timer);
+        timer = null;
+        event.preventDefault();
+        event.stopPropagation();
+      };
+      el.addEventListener('pointerdown', start);
+      el.addEventListener('pointerup', stop);
+      el.addEventListener('pointercancel', stop);
+      el.addEventListener('lostpointercapture', stop);
+    }
+    bindScroll('scrollUp', 'up');
+    bindScroll('scrollDown', 'down');
+
+    // Drag-to-scroll on track
+    const scrollTrack = document.getElementById('scrollTrack');
+    let scrollDragActive = false, scrollStartY = 0, scrollAccum = 0;
+    function handleTrackScroll(deltaY) {
       scrollAccum += deltaY;
       if (Math.abs(scrollAccum) >= 16) {
         const dir = scrollAccum > 0 ? 'down' : 'up';
-        sendScroll(dir, 140);
+        apiPost('/control/scroll', { direction: dir, amount: 1 });
+        if (navigator.vibrate) navigator.vibrate(6);
         scrollAccum = 0;
       }
     }
-
-    scrollTrack.addEventListener('touchstart', (e) => {
-      scrollDragActive = true;
-      scrollStartY = e.touches[0].clientY;
-      scrollTrack.classList.add('active');
-      e.preventDefault();
-    }, { passive: false });
-
-    window.addEventListener('touchmove', (e) => {
-      if (!scrollDragActive) return;
-      const curY = e.touches[0].clientY;
-      handleScrollMove(curY - scrollStartY);
-      scrollStartY = curY;
-    }, { passive: true });
-
-    window.addEventListener('touchend', () => {
-      scrollDragActive = false;
-      scrollTrack.classList.remove('active');
-    });
-
-    scrollTrack.addEventListener('mousedown', (e) => {
+    scrollTrack.addEventListener('pointerdown', (e) => {
       scrollDragActive = true;
       scrollStartY = e.clientY;
       scrollTrack.classList.add('active');
-      const onMove = (ev) => {
-        handleScrollMove(ev.clientY - scrollStartY);
-        scrollStartY = ev.clientY;
-      };
-      const onUp = () => {
-        scrollDragActive = false;
-        scrollTrack.classList.remove('active');
-        window.removeEventListener('mousemove', onMove);
-        window.removeEventListener('mouseup', onUp);
-      };
-      window.addEventListener('mousemove', onMove);
-      window.addEventListener('mouseup', onUp);
-    });
-
-    function sendScroll(direction, amount = 160) {
-      if (navigator.vibrate) navigator.vibrate(6);
-      const mask = direction === 'up' ? 8 : 16;
-      sendRfbPointer(cursorX, cursorY, mask);
-      setTimeout(() => sendRfbPointer(cursorX, cursorY, 0), 30);
-      apiPost('/api/scroll', { direction, amount });
-    }
-    window.sendScroll = sendScroll;
-
-    // --- Left & Right Click Buttons (DUAL DISPATCH: RFB + CDP) ---
-    const btnLeft = document.getElementById('btnLeftClick');
-    const btnRight = document.getElementById('btnRightClick');
-
-    function dispatchClick(buttonMask, apiBtnName) {
-      if (navigator.vibrate) navigator.vibrate(12);
-
-      // 1. Send native RFB pointer click to display server
-      sendRfbPointer(cursorX, cursorY, buttonMask);
-      setTimeout(() => sendRfbPointer(cursorX, cursorY, 0), 40);
-
-      // 2. Direct CDP synthetic input event into Chromium (guarantees click action)
-      apiPost('/api/mouse/click', { x: cursorX, y: cursorY, button: apiBtnName });
-    }
-
-    btnLeft.addEventListener('pointerdown', (e) => {
-      btnLeft.classList.add('active');
-      dispatchClick(1, 'left');
+      scrollTrack.setPointerCapture(e.pointerId);
       e.preventDefault();
     });
-    btnLeft.addEventListener('pointerup', () => btnLeft.classList.remove('active'));
-
-    btnRight.addEventListener('pointerdown', (e) => {
-      btnRight.classList.add('active');
-      dispatchClick(4, 'right');
+    scrollTrack.addEventListener('pointermove', (e) => {
+      if (!scrollDragActive) return;
+      handleTrackScroll(e.clientY - scrollStartY);
+      scrollStartY = e.clientY;
       e.preventDefault();
     });
-    btnRight.addEventListener('pointerup', () => btnRight.classList.remove('active'));
+    const stopTrackScroll = () => {
+      scrollDragActive = false;
+      scrollTrack.classList.remove('active');
+    };
+    scrollTrack.addEventListener('pointerup', stopTrackScroll);
+    scrollTrack.addEventListener('pointercancel', stopTrackScroll);
 
-    // --- Keyboard System ---
+    // --- Spine Keyboard Controller ---
     const keyStripContainer = document.getElementById('keyStripContainer');
     const btnToggleKeyboard = document.getElementById('btnToggleKeyboard');
     const mobileHiddenInput = document.getElementById('mobileHiddenInput');
@@ -1131,63 +1119,60 @@
     };
 
     window.invokeNativeKeyboard = function() {
-      mobileHiddenInput.focus();
+      mobileHiddenInput.value = '';
+      mobileHiddenInput.focus({ preventScroll: true });
     };
 
-    mobileHiddenInput.addEventListener('input', (e) => {
-      const val = mobileHiddenInput.value;
-      if (val) {
-        sendKeyString(val);
+    const keyMap = {
+      Enter: 'Return', Backspace: 'BackSpace', Tab: 'Tab', Escape: 'Escape', Delete: 'Delete',
+      ArrowLeft: 'Left', ArrowRight: 'Right', ArrowUp: 'Up', ArrowDown: 'Down',
+      Home: 'Home', End: 'End', PageUp: 'Page_Up', PageDown: 'Page_Down'
+    };
+
+    mobileHiddenInput.addEventListener('keydown', (e) => {
+      const mapped = keyMap[e.key];
+      if (mapped) {
+        e.preventDefault();
+        sendKey(mapped);
         mobileHiddenInput.value = '';
       }
     });
 
-    mobileHiddenInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Backspace') {
-        sendNamedKey('Backspace', 0xff08);
-      } else if (e.key === 'Enter') {
-        sendNamedKey('Enter', 0xff0d);
-      } else if (e.key === 'Tab') {
-        sendNamedKey('Tab', 0xff09);
-      } else if (e.key === 'Escape') {
-        sendNamedKey('Escape', 0xff1b);
+    mobileHiddenInput.addEventListener('input', (e) => {
+      if (e.inputType === 'insertLineBreak') {
+        sendKey('Return');
+      } else if (e.inputType === 'deleteContentBackward') {
+        sendKey('BackSpace');
+      } else {
+        const text = e.data || mobileHiddenInput.value;
+        if (text) sendType(text);
       }
+      mobileHiddenInput.value = '';
     });
 
     window.sendTypeBox = function() {
       const tb = document.getElementById('typeInput');
       const val = tb.value;
       if (val) {
-        sendKeyString(val);
+        sendType(val);
         tb.value = '';
       }
     };
 
-    function sendKeyString(str) {
-      if (rfbClient && typeof rfbClient.sendKey === 'function') {
-        for (let i = 0; i < str.length; i++) {
-          const code = str.charCodeAt(i);
-          rfbClient.sendKey(code, null, true);
-          rfbClient.sendKey(code, null, false);
-        }
-      }
-      apiPost('/api/type', { text: str });
+    function sendType(text) {
+      apiPost('/control/type', { text });
     }
+    window.sendType = sendType;
 
-    function sendNamedKey(keyName, keysym) {
-      if (rfbClient && typeof rfbClient.sendKey === 'function') {
-        rfbClient.sendKey(keysym, keyName, true);
-        setTimeout(() => rfbClient.sendKey(keysym, keyName, false), 30);
-      }
-      apiPost('/api/press', { key: keyName });
+    function sendKey(key) {
+      apiPost('/control/key', { key });
     }
-    window.sendNamedKey = sendNamedKey;
+    window.sendKey = sendKey;
 
-    function sendCtrl(keyChar) {
-      const code = keyChar.toUpperCase();
-      apiPost('/api/press', { key: `Control+${code}` });
+    function sendShortcut(shortcut) {
+      apiPost('/control/shortcut', { shortcut });
     }
-    window.sendCtrl = sendCtrl;
+    window.sendShortcut = sendShortcut;
 
     // --- HUD Visibility Toggle ---
     const controlHud = document.getElementById('controlHud');
@@ -1204,6 +1189,7 @@
         controlHud.classList.add('hidden');
         hudPillText.textContent = 'Show Controls';
         btnToggleHud.classList.remove('active');
+        stopVelocity();
       }
       localStorage.setItem('archHudVisible', String(hudVisible));
     }
@@ -1227,7 +1213,7 @@
         btnToggleCockpit.classList.remove('active');
       }
       localStorage.setItem('archCockpitOpen', String(cockpitOpen));
-      setTimeout(() => { findCanvas(); updateCursorVisual(); }, 320);
+      setTimeout(updateRemoteCursor, 320);
     }
 
     window.toggleCockpit = function() {
@@ -1250,13 +1236,13 @@
 
     // --- Takeover Toggle ---
     window.toggleTakeover = function() {
-      apiPost(isHuman ? '/api/release' : '/api/takeover');
+      apiPost(isHuman ? '/api/release' : '/api/takeover').then(refreshStatus);
     };
 
     // --- Navigation ---
     window.navigateUrl = function() {
       const val = document.getElementById('urlInput').value.trim();
-      if (val) apiPost('/api/goto', { url: val });
+      if (val) apiPost('/api/goto', { url: val }).then(refreshStatus);
     };
 
     // --- Status Refresh Loop ---
@@ -1425,8 +1411,7 @@
     // Boot
     applyHudState();
     applyCockpitState();
-    initVnc();
-    setInterval(refreshStatus, 2500);
+    setInterval(refreshStatus, 3000);
     refreshStatus();
   </script>
 </body>

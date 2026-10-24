@@ -18,6 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libnss3-tools \
     dbus-x11 \
     xauth \
+    xdotool \
  && rm -rf /var/lib/apt/lists/* \
  && useradd -m -u 1000 -s /bin/bash arch \
  && mkdir -p /tmp/.X11-unix /data/profile /data/logs /data/downloads /app \

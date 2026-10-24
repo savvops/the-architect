@@ -23,6 +23,7 @@ import mimetypes
 import os
 import select
 import socket
+import subprocess
 import threading
 import time
 import urllib.parse
@@ -33,6 +34,23 @@ from typing import Any, Dict, List, Optional
 from router import ModelRouter
 
 VERSION = "0.3.0"
+
+CONTROL_LOCK = threading.Lock()
+
+
+def run_xdotool(*args: str) -> str:
+    env = os.environ.copy()
+    env["DISPLAY"] = os.environ.get("DISPLAY", ":99")
+    with CONTROL_LOCK:
+        result = subprocess.run(
+            ["xdotool", *args],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=1.5,
+            env=env,
+        )
+    return result.stdout.strip()
 
 
 class WSError(Exception):
@@ -682,6 +700,13 @@ class ArchHandler(BaseHTTPRequestHandler):
         if path == "/healthz":
             return self._send_json(200, {"ok": True, "service": "archd", "version": VERSION})
 
+        if path in ("/control/health", "/api/control/health"):
+            try:
+                pos = run_xdotool("getmouselocation", "--shell")
+                return self._send_json(200, {"ok": True, "display": os.environ.get("DISPLAY", ":99"), "position": pos})
+            except Exception as e:
+                return self._send_json(503, {"ok": False, "error": f"display_unavailable: {e}"})
+
         if path in ("/", "/index.html", "/ui"):
             ui_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui", "index.html")
             with open(ui_path, "rb") as f:
@@ -781,6 +806,72 @@ class ArchHandler(BaseHTTPRequestHandler):
             # Read-only decision; no browser mutation, so no lock check.
             res = ROUTER.classify(body.get("state", {}), body.get("question", "Choose the best option."), body.get("options", []))
             return self._send_json(200, {"ok": True, **res})
+
+        # Spine-compatible direct OS pointer & keyboard controller (xdotool on DISPLAY)
+        if path in ("/control/move", "/api/control/move"):
+            dx = max(-160, min(160, int(body.get("dx", 0))))
+            dy = max(-160, min(160, int(body.get("dy", 0))))
+            if dx or dy:
+                run_xdotool("mousemove_relative", "--", str(dx), str(dy))
+            return self._send_json(200, {"ok": True})
+
+        if path in ("/control/button", "/api/control/button"):
+            button = int(body.get("button", 0))
+            action = str(body.get("action", ""))
+            if button not in {1, 2, 3} or action not in {"down", "up", "click"}:
+                return self._send_json(400, {"ok": False, "error": "invalid_button"})
+            if button == 3 and action == "click":
+                run_xdotool("keyup", "Alt_L", "Alt_R", "Control_L", "Control_R", "Super_L", "Super_R", "Shift_L", "Shift_R")
+            cmd = {"down": "mousedown", "up": "mouseup", "click": "click"}[action]
+            run_xdotool(cmd, str(button))
+            return self._send_json(200, {"ok": True})
+
+        if path in ("/control/scroll", "/api/control/scroll"):
+            direction = str(body.get("direction", ""))
+            amount = max(1, min(5, int(body.get("amount", 1))))
+            if direction not in {"up", "down"}:
+                return self._send_json(400, {"ok": False, "error": "invalid_scroll"})
+            run_xdotool("click", "--repeat", str(amount), "--delay", "25", "4" if direction == "up" else "5")
+            return self._send_json(200, {"ok": True})
+
+        if path in ("/control/key", "/api/control/key"):
+            key = str(body.get("key", ""))
+            allowed = {"Return", "BackSpace", "Tab", "Escape", "Delete", "Left", "Right", "Up", "Down", "Home", "End", "Page_Up", "Page_Down"}
+            if key not in allowed:
+                return self._send_json(400, {"ok": False, "error": "invalid_key"})
+            run_xdotool("keyup", "Alt_L", "Alt_R", "Control_L", "Control_R", "Super_L", "Super_R", "Shift_L", "Shift_R")
+            run_xdotool("key", key)
+            return self._send_json(200, {"ok": True})
+
+        if path in ("/control/type", "/api/control/type"):
+            text = str(body.get("text", ""))
+            if not text or len(text) > 300:
+                return self._send_json(400, {"ok": False, "error": "invalid_text"})
+            run_xdotool("keyup", "Alt_L", "Alt_R", "Control_L", "Control_R", "Super_L", "Super_R", "Shift_L", "Shift_R")
+            run_xdotool("type", "--delay", "1", text)
+            return self._send_json(200, {"ok": True})
+
+        if path in ("/control/shortcut", "/api/control/shortcut"):
+            shortcut = str(body.get("shortcut", ""))
+            shortcuts = {
+                "select_all": "ctrl+a",
+                "copy": "ctrl+c",
+                "paste": "ctrl+v",
+                "cut": "ctrl+x",
+                "undo": "ctrl+z",
+                "redo": "ctrl+shift+z",
+                "alt_tab": "alt+Tab",
+            }
+            combo = shortcuts.get(shortcut)
+            if not combo:
+                return self._send_json(400, {"ok": False, "error": "invalid_shortcut"})
+            run_xdotool("keyup", "Alt_L", "Alt_R", "Control_L", "Control_R", "Super_L", "Super_R", "Shift_L", "Shift_R")
+            run_xdotool("key", combo)
+            return self._send_json(200, {"ok": True})
+
+        if path in ("/control/release", "/api/control/release"):
+            run_xdotool("mouseup", "1", "mouseup", "3", "keyup", "Alt_L", "Alt_R", "Control_L", "Control_R", "Super_L", "Super_R", "Shift_L", "Shift_R")
+            return self._send_json(200, {"ok": True})
 
         denied = BROKER.check(self.headers.get("X-Arch-Lease"), self._actor())
         if denied:
