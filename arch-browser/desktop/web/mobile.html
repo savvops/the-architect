@@ -7,19 +7,19 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Spine Monitor">
+  <meta name="apple-mobile-web-app-title" content="Unified Monitor">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/app/images/icons/novnc.ico">
   <link rel="apple-touch-icon" href="/app/images/icons/novnc-ios-180.png">
   <link rel="stylesheet" href="/ui/node_modules/framework7/framework7-bundle.min.css">
-  <title>Savv Spine Remote</title>
+  <title>Savv Unified Remote Monitor</title>
   <style>
     :root {
       color-scheme: dark;
       --f7-theme-color: #4f8cff;
       --f7-theme-color-rgb: 79, 140, 255;
       --f7-font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
-      --glass: rgba(9, 14, 23, .82);
+      --glass: rgba(9, 14, 23, .84);
       --glass-strong: rgba(10, 15, 25, .94);
       --line: rgba(255, 255, 255, .14);
       --muted: #96a0b2;
@@ -34,12 +34,33 @@
     html, body, #app { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #000; }
     body { color: #f7f9fc; overscroll-behavior: none; user-select: none; }
     button { font: inherit; color: inherit; }
-    .lucide { width: 19px; height: 19px; stroke-width: 2; }
+    .lucide { width: 18px; height: 18px; stroke-width: 2; }
 
     #desktopFrame {
       position: fixed; z-index: 1; inset: 0; width: 100%; height: 100%; border: 0;
-      background: #000; overflow: hidden; touch-action: none;
+      background: #000; overflow: hidden; touch-action: none; pointer-events: none;
     }
+
+    /* Interactive Touch & Cursor Surface over the live desktop */
+    #viewportSurface {
+      position: fixed; z-index: 12; inset: 0; width: 100%; height: 100%;
+      background: transparent; touch-action: none; cursor: default;
+    }
+    #viewportSurface.pan-mode { cursor: grab; }
+    #viewportSurface.pan-dragging { cursor: grabbing; }
+
+    /* Tap ripple indicator */
+    .tap-ripple {
+      position: fixed; z-index: 33; width: 28px; height: 28px; margin-left: -14px; margin-top: -14px;
+      border: 2px solid rgba(79, 140, 255, .95); border-radius: 50%; pointer-events: none;
+      animation: tapPop .35s ease-out forwards;
+    }
+    .tap-ripple.right { border-color: #f59e0b; }
+    @keyframes tapPop {
+      0% { transform: scale(.35); opacity: 1; }
+      100% { transform: scale(1.55); opacity: 0; }
+    }
+
     #remoteCursor {
       position: fixed; z-index: 32; left: 0; top: 0; width: 22px; height: 28px;
       opacity: 0; pointer-events: none; transform: translate3d(-40px, -40px, 0);
@@ -50,34 +71,57 @@
 
     .top-hud {
       position: fixed; z-index: 45; top: max(8px, env(safe-area-inset-top)); left: max(8px, env(safe-area-inset-left));
-      right: max(8px, env(safe-area-inset-right)); display: grid; grid-template-columns: 1fr auto 1fr;
-      align-items: start; gap: 8px; pointer-events: none;
+      right: max(8px, env(safe-area-inset-right)); display: flex; flex-wrap: wrap;
+      align-items: center; justify-content: space-between; gap: 6px; pointer-events: none;
     }
-    .fit-chip, .hud-actions, #status { pointer-events: auto; }
-    .fit-chip {
-      justify-self: start; width: max-content; min-height: 38px; display: inline-flex; align-items: center; gap: 7px; padding: 0 12px;
-      border: 1px solid rgba(91, 224, 151, .42); border-radius: 14px; background: rgba(6, 46, 34, .86);
+    .hud-left, .hud-actions, #status { pointer-events: auto; }
+    .hud-left { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+    .fit-chip, .mode-chip {
+      min-height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 0 11px;
+      border: 1px solid rgba(91, 224, 151, .42); border-radius: 13px; background: rgba(6, 46, 34, .86);
       box-shadow: 0 8px 28px #0008; backdrop-filter: blur(18px) saturate(1.25);
-      color: #b8f7d3; font-size: 11px; font-weight: 750; touch-action: manipulation;
+      color: #b8f7d3; font-size: 11px; font-weight: 750; touch-action: manipulation; cursor: pointer;
     }
-    .fit-chip.needs-fit { background: rgba(37, 99, 235, .9); border-color: #88b4ff; color: white; }
+    .fit-chip.needs-fit { background: rgba(37, 99, 235, .92); border-color: #88b4ff; color: white; }
+    .mode-chip {
+      border-color: var(--line); background: var(--glass); color: #e2e8f0;
+    }
+    .mode-chip.pan-active {
+      background: rgba(245, 158, 11, .88); border-color: #fcd34d; color: #090d16;
+    }
+
+    .zoom-pill {
+      height: 36px; display: inline-flex; align-items: center; gap: 2px; padding: 2px;
+      border: 1px solid var(--line); border-radius: 13px; background: var(--glass);
+      box-shadow: 0 8px 28px #0008; backdrop-filter: blur(18px) saturate(1.2);
+    }
+    .zoom-pill button {
+      width: 30px; height: 30px; border: 0; border-radius: 10px; background: rgba(255,255,255,.07);
+      color: #fff; font-size: 15px; font-weight: 800; display: grid; place-items: center;
+      touch-action: manipulation; cursor: pointer;
+    }
+    .zoom-pill button:active { background: #2865df; transform: scale(.93); }
+    #hudZoomLabel {
+      min-width: 44px; padding: 0 5px; text-align: center; font-size: 11px; font-weight: 800;
+      color: #a9c8ff; cursor: pointer;
+    }
+
     #status {
-      justify-self: center; min-height: 32px; max-width: min(420px, 46vw); padding: 8px 12px;
+      min-height: 32px; max-width: min(320px, 42vw); padding: 7px 11px;
       border: 1px solid var(--line); border-radius: 999px; background: rgba(5, 8, 13, .78);
       box-shadow: 0 8px 28px #0007; backdrop-filter: blur(18px); color: #c5cbd6;
       font-size: 11px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-      pointer-events: none; transition: opacity .25s ease;
+      transition: opacity .24s ease, transform .24s ease;
     }
-    #status.quiet { opacity: 0; }
-    #status[data-state="connected"]::before {
-      content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%;
-      background: #4ade80; box-shadow: 0 0 10px #22c55e;
-    }
-    .hud-actions { justify-self: end; display: flex; gap: 7px; }
+    #status[data-state="connected"] { color: #b8f7d3; border-color: rgba(86, 211, 143, .36); }
+    #status.quiet { opacity: 0; transform: translateY(-4px); pointer-events: none; }
+
+    .hud-actions { display: inline-flex; gap: 6px; }
     .hud-button {
-      width: 42px; height: 42px; display: grid; place-items: center; padding: 0; border: 1px solid var(--line);
-      border-radius: 14px; background: var(--glass); box-shadow: 0 8px 28px #0008;
-      backdrop-filter: blur(18px) saturate(1.2); touch-action: manipulation;
+      width: 38px; height: 38px; display: grid; place-items: center; padding: 0; border: 1px solid var(--line);
+      border-radius: 13px; background: var(--glass); box-shadow: 0 8px 28px #0008;
+      backdrop-filter: blur(18px) saturate(1.2); touch-action: manipulation; cursor: pointer;
     }
     .hud-button.active { background: rgba(40, 101, 224, .92); border-color: rgba(151, 190, 255, .85); }
     .hud-button:active { transform: scale(.94); }
@@ -140,7 +184,7 @@
       position: absolute; display: grid; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: 50%; pointer-events: auto;
       background: linear-gradient(145deg, rgba(30, 42, 63, .97), rgba(7, 11, 18, .94));
       box-shadow: 0 9px 24px #000a, inset 0 1px rgba(255,255,255,.1); touch-action: none;
-      font-size: 10px; font-weight: 850; letter-spacing: .04em;
+      font-size: 10px; font-weight: 850; letter-spacing: .04em; cursor: pointer;
     }
     .mouse-button .lucide { width: 19px; height: 19px; }
     .mouse-button:active, .mouse-button.active { transform: scale(.92); background: #2865df; border-color: #9ec2ff; }
@@ -168,12 +212,12 @@
     body.keyboard-open #keyStrip { display: flex; }
     .key-button {
       flex: 0 0 auto; min-width: 48px; height: 36px; padding: 0 11px; border: 1px solid var(--line); border-radius: 10px;
-      background: #171f2c; color: white; font-size: 11px; font-weight: 750; touch-action: manipulation;
+      background: #171f2c; color: white; font-size: 11px; font-weight: 750; touch-action: manipulation; cursor: pointer;
     }
     .key-button.primary { background: #2865df; border-color: #74a7ff; }
 
     .settings-sheet {
-      --f7-sheet-bg-color: rgba(9, 13, 21, .98); height: min(690px, 88vh); max-width: 520px;
+      --f7-sheet-bg-color: rgba(9, 13, 21, .98); height: min(720px, 90vh); max-width: 520px;
       left: 50%; right: auto; transform: translate3d(-50%, 100%, 0); border-radius: 26px 26px 0 0;
       overflow: hidden; box-shadow: 0 -20px 70px #000c; border: 1px solid rgba(255,255,255,.13); border-bottom: 0;
     }
@@ -206,15 +250,18 @@
     .zoom-control { display: grid; grid-template-columns: 42px 1fr 42px; align-items: center; gap: 8px; margin-top: 10px; }
     .zoom-control .button { width: 42px; height: 40px; min-width: 42px; padding: 0; border-radius: 12px; }
     #zoomValue { display: block; color: #a9c8ff; font-size: 11px; font-weight: 800; text-align: center; }
+    .pan-pad { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 10px; }
+    .pan-pad .button { height: 38px; border-radius: 10px; font-size: 12px; font-weight: 800; padding: 0; }
     .settings-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin: 12px; }
     .settings-actions .button { height: 44px; border-radius: 13px; font-size: 12px; font-weight: 750; text-transform: none; }
     .foss-note { margin: 12px 18px 4px; color: #778294; font-size: 9px; line-height: 1.45; text-align: center; }
 
     @media (orientation: landscape) and (max-height: 600px) {
       .top-hud { top: max(5px, env(safe-area-inset-top)); left: max(5px, env(safe-area-inset-left)); right: max(5px, env(safe-area-inset-right)); }
-      .fit-chip { min-height: 34px; padding: 0 9px; border-radius: 12px; }
-      .hud-button { width: 38px; height: 38px; border-radius: 12px; }
-      #status { min-height: 28px; padding: 6px 10px; }
+      .fit-chip, .mode-chip, .zoom-pill { min-height: 32px; height: 32px; border-radius: 11px; }
+      .zoom-pill button { width: 26px; height: 26px; }
+      .hud-button { width: 34px; height: 34px; border-radius: 11px; }
+      #status { min-height: 28px; padding: 5px 10px; }
       #joystickWrap {
         left: max(5px, env(safe-area-inset-left)); bottom: max(8px, env(safe-area-inset-bottom)); width: 94px; height: 94px; border-radius: 27px;
       }
@@ -234,8 +281,7 @@
       .section-label { margin-top: 12px; }
     }
     @media (orientation: portrait) and (max-width: 560px) {
-      .top-hud { grid-template-columns: auto 1fr auto; }
-      #status { max-width: 38vw; }
+      #status { display: none; }
       #joystickWrap { width: 112px; height: 112px; }
       #touchpadWrap { left: 14px; right: 14px; bottom: calc(max(14px, env(safe-area-inset-bottom)) + 140px); width: auto; height: 104px; transform: scale(var(--control-scale)); transform-origin: center bottom; }
       #clickCluster { width: 190px; height: 118px; }
@@ -250,16 +296,30 @@
   <div id="app">
     <iframe id="desktopFrame" title="Live 1080p desktop" src="/classic.html?autoconnect=1&amp;resize=scale&amp;view_clip=0&amp;view_only=1&amp;path=websockify&amp;reconnect=1" allow="clipboard-read; clipboard-write"></iframe>
 
+    <div id="viewportSurface" role="application" aria-label="Interactive remote desktop: tap or click to interact, pinch or use zoom controls to zoom and pan"></div>
+
     <div id="remoteCursor" aria-hidden="true">
       <svg viewBox="0 0 22 28" focusable="false"><path d="M2 1.5v20.3l5.1-4.3 3.8 8.8 4.2-1.8-3.8-8.7h7.1z" fill="#fff" stroke="#111827" stroke-width="2" stroke-linejoin="round"/></svg>
     </div>
 
     <header class="top-hud" aria-label="Remote desktop toolbar">
-      <button id="fitQuick" class="fit-chip" type="button"><i data-lucide="scan"></i><span>1080p Fit</span></button>
+      <div class="hud-left">
+        <button id="fitQuick" class="fit-chip" type="button" title="Fit full 1080p desktop"><i data-lucide="scan"></i><span>Fit</span></button>
+        <div class="zoom-pill" aria-label="Zoom controls">
+          <button id="hudZoomOut" type="button" aria-label="Zoom out">−</button>
+          <span id="hudZoomLabel" title="Tap to reset zoom">100%</span>
+          <button id="hudZoomIn" type="button" aria-label="Zoom in">+</button>
+        </div>
+        <button id="modeToggle" class="mode-chip" type="button" title="Switch 1-finger drag between Direct Touch/Cursor and Pan View">
+          <span id="modeIcon">👆</span><span id="modeText">Touch</span>
+        </button>
+      </div>
+
       <div id="status" role="status">Connecting…</div>
+
       <div class="hud-actions">
         <button id="keyboardToggle" class="hud-button" type="button" aria-label="Show keyboard"><i data-lucide="keyboard"></i></button>
-        <button id="controlsToggle" class="hud-button active" type="button" aria-label="Hide controls"><i data-lucide="mouse-pointer-2"></i></button>
+        <button id="controlsToggle" class="hud-button active" type="button" aria-label="Hide controls"><i data-lucide="gamepad-2"></i></button>
         <button id="settingsToggle" class="hud-button" type="button" aria-label="Open settings"><i data-lucide="sliders-horizontal"></i></button>
       </div>
     </header>
@@ -303,12 +363,33 @@
     <div class="sheet-modal settings-sheet" id="settingsSheet" aria-label="Remote control settings">
       <div class="toolbar">
         <div class="toolbar-inner">
-          <div class="left"><span style="padding-left:16px;font-weight:750">Controller</span></div>
+          <div class="left"><span style="padding-left:16px;font-weight:750">Controller &amp; View</span></div>
           <div class="right"><a class="link sheet-close" href="#">Done</a></div>
         </div>
       </div>
       <div class="sheet-modal-inner">
-        <div class="settings-title"><h2>Make it yours</h2><p>Every control can be shown or hidden independently.</p></div>
+        <div class="settings-title"><h2>Make it yours</h2><p>Tap/click directly on the screen, pinch to zoom &amp; pan, or use the Spine HUD controls.</p></div>
+
+        <div class="section-label">Desktop view · Zoom &amp; Pan</div>
+        <div class="settings-card view-card">
+          <div class="view-summary"><strong>Full monitor</strong><span id="viewState">1920×1080 · Fit</span></div>
+          <div class="view-buttons">
+            <button class="button button-fill" id="zoomFit" type="button">Fit all 1080p</button>
+            <button class="button button-tonal" id="maximizeWindow" type="button">Maximize window</button>
+          </div>
+          <div class="zoom-control">
+            <button class="button button-tonal" id="zoomOut" type="button" aria-label="Zoom out">−</button>
+            <label for="zoomRange"><span id="zoomValue">Fit · 100%</span><input id="zoomRange" type="range" min="60" max="400" step="10" value="100"></label>
+            <button class="button button-tonal" id="zoomIn" type="button" aria-label="Zoom in">+</button>
+          </div>
+          <div class="pan-pad" aria-label="Directional pan controls">
+            <button class="button button-tonal" type="button" data-pan="left">◀ Left</button>
+            <button class="button button-tonal" type="button" data-pan="up">▲ Up</button>
+            <button class="button button-tonal" type="button" data-pan="center">Center</button>
+            <button class="button button-tonal" type="button" data-pan="down">▼ Down</button>
+            <button class="button button-tonal" type="button" data-pan="right">Right ▶</button>
+          </div>
+        </div>
 
         <div class="section-label">Control layout</div>
         <div class="settings-card">
@@ -337,25 +418,11 @@
           <label class="range-setting" for="controlOpacity" style="border-top:1px solid rgba(255,255,255,.08)"><span class="range-heading"><span>Control opacity</span><output id="controlOpacityValue">90%</output></span><input id="controlOpacity" type="range" min="55" max="100" step="5" value="90"></label>
         </div>
 
-        <div class="section-label">Desktop view</div>
-        <div class="settings-card view-card">
-          <div class="view-summary"><strong>Full monitor</strong><span id="viewState">1920×1080 · Fit</span></div>
-          <div class="view-buttons">
-            <button class="button button-fill" id="zoomFit" type="button">Fit all 1080p</button>
-            <button class="button button-tonal" id="maximizeWindow" type="button">Maximize window</button>
-          </div>
-          <div class="zoom-control">
-            <button class="button button-tonal" id="zoomOut" type="button" aria-label="Zoom out">−</button>
-            <label for="zoomRange"><span id="zoomValue">Fit · 100%</span><input id="zoomRange" type="range" min="60" max="200" step="10" value="100"></label>
-            <button class="button button-tonal" id="zoomIn" type="button" aria-label="Zoom in">+</button>
-          </div>
-        </div>
-
         <div class="settings-actions">
           <button class="button button-tonal" id="fullscreenToggle" type="button">Full screen</button>
           <button class="button button-tonal" id="resetSettings" type="button">Reset defaults</button>
         </div>
-        <p class="foss-note">Framework7 · Apache Guacamole touch gestures · NippleJS · Lucide · noVNC<br>Open-source components, self-hosted on this private controller.</p>
+        <p class="foss-note">Framework7 · Apache Guacamole touch gestures · NippleJS · Lucide · noVNC<br>Direct touchscreen, mouse cursor, pinch-to-zoom &amp; pan enabled.</p>
       </div>
     </div>
   </div>
@@ -368,10 +435,17 @@
 
     const byId = id => document.getElementById(id);
     const desktopFrame = byId('desktopFrame');
+    const viewportSurface = byId('viewportSurface');
     const remoteCursor = byId('remoteCursor');
     const statusEl = byId('status');
     const fitQuick = byId('fitQuick');
     const fitQuickLabel = fitQuick.querySelector('span');
+    const hudZoomOut = byId('hudZoomOut');
+    const hudZoomIn = byId('hudZoomIn');
+    const hudZoomLabel = byId('hudZoomLabel');
+    const modeToggle = byId('modeToggle');
+    const modeIcon = byId('modeIcon');
+    const modeText = byId('modeText');
     const controlsToggle = byId('controlsToggle');
     const keyboardToggle = byId('keyboardToggle');
     const settingsToggle = byId('settingsToggle');
@@ -394,8 +468,10 @@
     let zoomLevel = 1;
     let zoomMode = 'fit';
     let panX = 0, panY = 0;
+    let interactionMode = 'touch'; // 'touch' (direct touch/cursor drag) or 'pan' (1-finger drag pans view, tap clicks)
+    let spacePressed = false;
     let framebufferWidth = 1920, framebufferHeight = 1080;
-    let remotePointerX = null, remotePointerY = null;
+    let remotePointerX = 960, remotePointerY = 540;
     let observedCanvas = null, canvasResizeObserver = null, monitorFrame = null;
     let pointerSpeedMultiplier = savedNumber('spinePointerSpeed', 1, .5, 1.75);
     let controlScale = savedNumber('spineControlScale', 1, .85, 1.15);
@@ -407,6 +483,7 @@
     let controlsHidden = false;
     let vx = 0, vy = 0, lastFrame = performance.now(), movementFrame = null;
     let pendingDX = 0, pendingDY = 0, moveBusy = false;
+    let pendingAbs = null, absMoveBusy = false;
 
     function savedNumber(key, fallback, min, max) {
       try {
@@ -423,8 +500,16 @@
     function saveSetting(key, value) {
       try { localStorage.setItem(key, String(value)); } catch (_) {}
     }
-    function pulse() {
-      if (hapticsEnabled && navigator.vibrate) navigator.vibrate(9);
+    function pulse(ms = 9) {
+      if (hapticsEnabled && navigator.vibrate) navigator.vibrate(ms);
+    }
+    function showRipple(clientX, clientY, isRight = false) {
+      const ripple = document.createElement('div');
+      ripple.className = 'tap-ripple' + (isRight ? ' right' : '');
+      ripple.style.left = `${clientX}px`;
+      ripple.style.top = `${clientY}px`;
+      document.body.appendChild(ripple);
+      setTimeout(() => ripple.remove(), 380);
     }
     function setStatus(text, state = '') {
       if (statusTimer) clearTimeout(statusTimer);
@@ -461,11 +546,40 @@
     function updateRemoteCursor(canvas = desktopCanvas()) {
       if (!canvas || remotePointerX === null || remotePointerY === null || !framebufferWidth || !framebufferHeight) return;
       const rect = canvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
       const x = rect.left + Math.max(0, Math.min(framebufferWidth - 1, remotePointerX)) / framebufferWidth * rect.width;
       const y = rect.top + Math.max(0, Math.min(framebufferHeight - 1, remotePointerY)) / framebufferHeight * rect.height;
       remoteCursor.style.transform = `translate3d(${x - 2}px, ${y - 2}px, 0)`;
       remoteCursor.classList.add('visible');
     }
+    function clientToRemote(clientX, clientY, canvas = desktopCanvas()) {
+      if (!canvas || !framebufferWidth || !framebufferHeight) return null;
+      const rect = canvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) return null;
+      const normX = (clientX - rect.left) / rect.width;
+      const normY = (clientY - rect.top) / rect.height;
+      const x = Math.round(Math.max(0, Math.min(framebufferWidth - 1, normX * framebufferWidth)));
+      const y = Math.round(Math.max(0, Math.min(framebufferHeight - 1, normY * framebufferHeight)));
+      return { x, y };
+    }
+
+    function updateInteractionModeUI() {
+      const isPan = interactionMode === 'pan';
+      modeToggle.classList.toggle('pan-active', isPan);
+      modeIcon.textContent = isPan ? '✋' : '👆';
+      modeText.textContent = isPan ? 'Pan' : 'Touch';
+      viewportSurface.classList.toggle('pan-mode', isPan);
+    }
+    function setInteractionMode(mode, announce = true) {
+      interactionMode = mode === 'pan' ? 'pan' : 'touch';
+      updateInteractionModeUI();
+      if (announce) {
+        setStatus(interactionMode === 'pan' ? 'Pan mode · drag to pan, tap to click' : 'Touch/Cursor mode · tap or drag to control', connected ? 'connected' : '');
+      }
+    }
+    modeToggle.addEventListener('click', () => {
+      setInteractionMode(interactionMode === 'pan' ? 'touch' : 'pan', true);
+    });
 
     function forceNativeFit(canvas) {
       if (!canvas) return;
@@ -485,18 +599,17 @@
       const drag = doc.querySelector('#noVNC_view_drag_button');
       if (drag?.classList.contains('noVNC_selected')) drag.click();
       canvas.dataset.spineNativeFit = 'true';
-      if (zoomMode === 'fit') {
-        for (const el of [canvas.parentElement, doc.querySelector('#noVNC_container'), doc.scrollingElement, doc.body]) {
-          if (el) { el.scrollLeft = 0; el.scrollTop = 0; }
+      for (const el of [canvas.parentElement, doc.querySelector('#noVNC_container'), doc.querySelector('#noVNC_screen'), doc.scrollingElement, doc.body]) {
+        if (el) {
+          el.style.overflow = 'visible';
+          if (zoomMode === 'fit') { el.scrollLeft = 0; el.scrollTop = 0; }
         }
       }
     }
     function clampPan(canvas) {
-      if (!canvas || zoomMode === 'fit' || zoomLevel <= 1) { panX = panY = 0; return; }
-      const screen = canvas.parentElement?.getBoundingClientRect();
-      if (!screen) return;
-      const maxX = Math.max(0, (canvas.offsetWidth * zoomLevel - screen.width) / 2);
-      const maxY = Math.max(0, (canvas.offsetHeight * zoomLevel - screen.height) / 2);
+      if (!canvas || (zoomMode === 'fit' && panX === 0 && panY === 0)) return;
+      const maxX = Math.max(canvas.offsetWidth * 0.45, (canvas.offsetWidth * zoomLevel) / 2);
+      const maxY = Math.max(canvas.offsetHeight * 0.65, (canvas.offsetHeight * zoomLevel) / 2);
       panX = Math.max(-maxX, Math.min(maxX, panX));
       panY = Math.max(-maxY, Math.min(maxY, panY));
     }
@@ -505,7 +618,8 @@
       byId('zoomRange').value = String(percent);
       byId('zoomValue').textContent = zoomMode === 'fit' ? 'Fit · 100%' : `${percent}%`;
       byId('viewState').textContent = zoomMode === 'fit' ? `${framebufferWidth}×${framebufferHeight} · Fit` : `${percent}% zoom`;
-      fitQuickLabel.textContent = zoomMode === 'fit' ? '1080p Fit' : 'Show all';
+      hudZoomLabel.textContent = `${percent}%`;
+      fitQuickLabel.textContent = zoomMode === 'fit' ? 'Fit' : 'Reset';
       fitQuick.classList.toggle('needs-fit', zoomMode !== 'fit');
     }
     function applyZoom(canvas = desktopCanvas()) {
@@ -514,46 +628,41 @@
       forceNativeFit(canvas);
       clampPan(canvas);
       canvas.style.transformOrigin = 'center center';
-      canvas.style.transform = zoomMode === 'fit' ? '' : `translate3d(${panX}px, ${panY}px, 0) scale(${zoomLevel})`;
-      canvas.style.cursor = zoomMode === 'manual' && zoomLevel > 1 ? 'grab' : '';
+      canvas.style.transform = zoomMode === 'fit' && panX === 0 && panY === 0 ? '' : `translate3d(${panX}px, ${panY}px, 0) scale(${zoomLevel})`;
+      updateRemoteCursor(canvas);
     }
     function fitDesktop(announce = true) {
-      zoomMode = 'fit'; zoomLevel = 1; panX = panY = 0; applyZoom(); scheduleMonitorUpdate();
+      zoomMode = 'fit'; zoomLevel = 1; panX = panY = 0;
+      setInteractionMode('touch', false);
+      applyZoom(); scheduleMonitorUpdate();
       if (announce) setStatus('Full 1080p desktop visible', connected ? 'connected' : '');
     }
-    function setZoom(next, announce = true) {
-      const level = Math.max(.6, Math.min(2, Math.round(next * 10) / 10));
-      if (level === 1) return fitDesktop(announce);
-      zoomMode = 'manual'; zoomLevel = level; if (level <= 1) panX = panY = 0;
+    function setZoom(next, announce = true, centerClientX = null, centerClientY = null) {
+      const prevZoom = zoomLevel;
+      const level = Math.max(.6, Math.min(4.0, Math.round(next * 20) / 20));
+      if (Math.abs(level - 1) < 0.03 && panX === 0 && panY === 0) return fitDesktop(announce);
+      zoomMode = 'manual';
+      if (centerClientX !== null && centerClientY !== null && prevZoom > 0) {
+        const ratio = level / prevZoom;
+        const cx = centerClientX - window.innerWidth / 2;
+        const cy = centerClientY - window.innerHeight / 2;
+        panX = cx - (cx - panX) * ratio;
+        panY = cy - (cy - panY) * ratio;
+      }
+      zoomLevel = level;
       applyZoom(); scheduleMonitorUpdate();
-      if (announce) setStatus(`Desktop zoom · ${Math.round(level * 100)}%`, connected ? 'connected' : '');
+      if (announce) setStatus(`Zoom · ${Math.round(level * 100)}%`, connected ? 'connected' : '');
     }
-    function installCanvasPan(canvas) {
-      if (canvas.dataset.spinePanReady === 'true') return;
-      canvas.dataset.spinePanReady = 'true';
-      let touchId = null, startX = 0, startY = 0, startPanX = 0, startPanY = 0;
-      const findTouch = list => Array.from(list).find(item => item.identifier === touchId);
-      canvas.addEventListener('touchstart', event => {
-        if (zoomMode !== 'manual' || zoomLevel <= 1 || touchId !== null) return;
-        const touch = event.changedTouches[0]; if (!touch) return;
-        touchId = touch.identifier; startX = touch.clientX; startY = touch.clientY; startPanX = panX; startPanY = panY;
-        event.preventDefault(); event.stopImmediatePropagation();
-      }, { capture: true, passive: false });
-      canvas.addEventListener('touchmove', event => {
-        const touch = findTouch(event.touches); if (!touch) return;
-        panX = startPanX + touch.clientX - startX; panY = startPanY + touch.clientY - startY;
-        applyZoom(canvas); scheduleMonitorUpdate(); event.preventDefault(); event.stopImmediatePropagation();
-      }, { capture: true, passive: false });
-      const stop = event => {
-        if (touchId === null || !findTouch(event.changedTouches)) return;
-        touchId = null; event.preventDefault(); event.stopImmediatePropagation();
-      };
-      canvas.addEventListener('touchend', stop, { capture: true, passive: false });
-      canvas.addEventListener('touchcancel', stop, { capture: true, passive: false });
+    function nudgePan(dx, dy) {
+      zoomMode = 'manual';
+      panX += dx;
+      panY += dy;
+      applyZoom(); scheduleMonitorUpdate();
     }
+
     function observeDesktopCanvas(canvas) {
       if (observedCanvas === canvas) return;
-      canvasResizeObserver?.disconnect(); observedCanvas = canvas; installCanvasPan(canvas);
+      canvasResizeObserver?.disconnect(); observedCanvas = canvas;
       if ('ResizeObserver' in window) { canvasResizeObserver = new ResizeObserver(scheduleMonitorUpdate); canvasResizeObserver.observe(canvas); }
     }
     function scheduleMonitorUpdate() {
@@ -576,7 +685,7 @@
           connected = true;
           if (!controllerChecked) {
             controllerChecked = true;
-            try { const health = await controlHealth(); syncRemotePointer(health.position); setStatus('Live · controls ready', 'connected'); }
+            try { const health = await controlHealth(); syncRemotePointer(health.position); setStatus('Live · touch & cursor ready', 'connected'); }
             catch (_) { controllerChecked = false; setStatus('Live · controls checking…'); }
           }
         } else if (noVNCStatus) { connected = false; setStatus(noVNCStatus); }
@@ -587,13 +696,14 @@
     window.addEventListener('orientationchange', () => { fitDesktop(false); setStatus('Rotated · 1080p refitted', connected ? 'connected' : ''); });
     setInterval(updateMonitorBounds, 1000);
 
+    // --- Relative & Absolute Pointer Movement Queues ---
     function queueMove(dx, dy) {
       pendingDX += dx; pendingDY += dy; flushMove();
     }
     async function flushMove() {
       if (moveBusy) return;
-      const dx = Math.max(-160, Math.min(160, Math.trunc(pendingDX)));
-      const dy = Math.max(-160, Math.min(160, Math.trunc(pendingDY)));
+      const dx = Math.max(-320, Math.min(320, Math.trunc(pendingDX)));
+      const dy = Math.max(-320, Math.min(320, Math.trunc(pendingDY)));
       if (!dx && !dy) return;
       pendingDX -= dx; pendingDY -= dy; moveBusy = true;
       if (remotePointerX !== null && remotePointerY !== null) {
@@ -605,6 +715,287 @@
       catch (_) { setStatus('Controls reconnecting…'); controlHealth().then(h => syncRemotePointer(h.position)).catch(() => {}); }
       finally { moveBusy = false; if (Math.abs(pendingDX) >= 1 || Math.abs(pendingDY) >= 1) flushMove(); }
     }
+
+    function queueAbsMove(x, y) {
+      remotePointerX = x; remotePointerY = y; updateRemoteCursor();
+      pendingAbs = { x, y };
+      flushAbsMove();
+    }
+    async function flushAbsMove() {
+      if (absMoveBusy || !pendingAbs) return;
+      const target = pendingAbs;
+      pendingAbs = null;
+      absMoveBusy = true;
+      try { await control('/move', target); }
+      catch (_) {}
+      finally { absMoveBusy = false; if (pendingAbs) flushAbsMove(); }
+    }
+
+    // --- Direct Viewport Surface: Touch Screen (Tap, Long-Press, Drag, 2-Finger Pinch/Pan) & Mouse Cursor ---
+    let touchState = {
+      active: false,
+      pinching: false,
+      touchId: null,
+      startX: 0,
+      startY: 0,
+      lastX: 0,
+      lastY: 0,
+      startPanX: 0,
+      startPanY: 0,
+      startTime: 0,
+      moved: false,
+      longPressFired: false,
+      longPressTimer: null,
+      pinchStartDist: 0,
+      pinchStartZoom: 1,
+      pinchStartMidX: 0,
+      pinchStartMidY: 0,
+      pinchStartPanX: 0,
+      pinchStartPanY: 0,
+      lastTapTime: 0,
+      lastTapX: 0,
+      lastTapY: 0,
+    };
+
+    function clearLongPress() {
+      if (touchState.longPressTimer) {
+        clearTimeout(touchState.longPressTimer);
+        touchState.longPressTimer = null;
+      }
+    }
+
+    viewportSurface.addEventListener('touchstart', event => {
+      event.preventDefault();
+      if (event.touches.length >= 2) {
+        clearLongPress();
+        touchState.pinching = true;
+        touchState.moved = true;
+        const t0 = event.touches[0], t1 = event.touches[1];
+        touchState.pinchStartDist = Math.max(20, Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY));
+        touchState.pinchStartZoom = zoomLevel;
+        touchState.pinchStartMidX = (t0.clientX + t1.clientX) / 2;
+        touchState.pinchStartMidY = (t0.clientY + t1.clientY) / 2;
+        touchState.pinchStartPanX = panX;
+        touchState.pinchStartPanY = panY;
+        return;
+      }
+      if (event.touches.length === 1) {
+        const t = event.touches[0];
+        touchState.active = true;
+        touchState.pinching = false;
+        touchState.touchId = t.identifier;
+        touchState.startX = touchState.lastX = t.clientX;
+        touchState.startY = touchState.lastY = t.clientY;
+        touchState.startPanX = panX;
+        touchState.startPanY = panY;
+        touchState.startTime = performance.now();
+        touchState.moved = false;
+        touchState.longPressFired = false;
+        clearLongPress();
+        touchState.longPressTimer = setTimeout(() => {
+          if (touchState.active && !touchState.moved && !touchState.pinching) {
+            touchState.longPressFired = true;
+            const pt = clientToRemote(touchState.startX, touchState.startY);
+            if (pt) {
+              remotePointerX = pt.x; remotePointerY = pt.y; updateRemoteCursor();
+              pulse(18);
+              showRipple(touchState.startX, touchState.startY, true);
+              control('/button', { x: pt.x, y: pt.y, button: 3, action: 'click' }).catch(() => {});
+              setStatus('Right-click', connected ? 'connected' : '');
+            }
+          }
+        }, 460);
+      }
+    }, { passive: false });
+
+    viewportSurface.addEventListener('touchmove', event => {
+      event.preventDefault();
+      if (event.touches.length >= 2) {
+        clearLongPress();
+        touchState.pinching = true;
+        touchState.moved = true;
+        const t0 = event.touches[0], t1 = event.touches[1];
+        const dist = Math.max(20, Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY));
+        const midX = (t0.clientX + t1.clientX) / 2;
+        const midY = (t0.clientY + t1.clientY) / 2;
+        const nextZoom = Math.max(0.6, Math.min(4.0, touchState.pinchStartZoom * (dist / touchState.pinchStartDist)));
+        const ratio = nextZoom / touchState.pinchStartZoom;
+        const cx = touchState.pinchStartMidX - window.innerWidth / 2;
+        const cy = touchState.pinchStartMidY - window.innerHeight / 2;
+        zoomMode = 'manual';
+        zoomLevel = nextZoom;
+        panX = cx - (cx - touchState.pinchStartPanX) * ratio + (midX - touchState.pinchStartMidX);
+        panY = cy - (cy - touchState.pinchStartPanY) * ratio + (midY - touchState.pinchStartMidY);
+        applyZoom();
+        return;
+      }
+      if (!touchState.active || touchState.pinching || event.touches.length !== 1) return;
+      const t = event.touches[0];
+      const distFromStart = Math.hypot(t.clientX - touchState.startX, t.clientY - touchState.startY);
+      if (distFromStart > 9) {
+        touchState.moved = true;
+        clearLongPress();
+      }
+      if (!touchState.moved) return;
+
+      if (interactionMode === 'pan') {
+        zoomMode = 'manual';
+        panX = touchState.startPanX + (t.clientX - touchState.startX);
+        panY = touchState.startPanY + (t.clientY - touchState.startY);
+        applyZoom();
+      } else {
+        const pt = clientToRemote(t.clientX, t.clientY);
+        if (pt) queueAbsMove(pt.x, pt.y);
+      }
+      touchState.lastX = t.clientX;
+      touchState.lastY = t.clientY;
+    }, { passive: false });
+
+    const endTouchSurface = event => {
+      clearLongPress();
+      if (event.touches.length === 0) {
+        if (touchState.active && !touchState.pinching && !touchState.moved && !touchState.longPressFired) {
+          const now = performance.now();
+          const pt = clientToRemote(touchState.startX, touchState.startY);
+          if (pt) {
+            remotePointerX = pt.x; remotePointerY = pt.y; updateRemoteCursor();
+            const isDoubleTap = (now - touchState.lastTapTime < 320) &&
+              Math.hypot(touchState.startX - touchState.lastTapX, touchState.startY - touchState.lastTapY) < 28;
+            touchState.lastTapTime = isDoubleTap ? 0 : now;
+            touchState.lastTapX = touchState.startX;
+            touchState.lastTapY = touchState.startY;
+            pulse(10);
+            showRipple(touchState.startX, touchState.startY, false);
+            control('/button', {
+              x: pt.x,
+              y: pt.y,
+              button: 1,
+              action: isDoubleTap ? 'dblclick' : 'click',
+            }).catch(() => {});
+          }
+        }
+        touchState.active = false;
+        touchState.pinching = false;
+        touchState.touchId = null;
+      }
+    };
+    viewportSurface.addEventListener('touchend', endTouchSurface, { passive: false });
+    viewportSurface.addEventListener('touchcancel', endTouchSurface, { passive: false });
+
+    // --- Direct Mouse / Cursor Control on Viewport Surface ---
+    let mouseState = {
+      down: false,
+      panning: false,
+      button: 1,
+      startX: 0,
+      startY: 0,
+      startPanX: 0,
+      startPanY: 0,
+      moved: false,
+    };
+
+    window.addEventListener('keydown', e => {
+      if (e.code === 'Space' && document.activeElement !== keyboardInput) spacePressed = true;
+    });
+    window.addEventListener('keyup', e => {
+      if (e.code === 'Space') spacePressed = false;
+    });
+
+    viewportSurface.addEventListener('pointerdown', event => {
+      if (event.pointerType === 'touch') return;
+      event.preventDefault();
+      viewportSurface.setPointerCapture(event.pointerId);
+      mouseState.down = true;
+      mouseState.moved = false;
+      mouseState.startX = event.clientX;
+      mouseState.startY = event.clientY;
+      mouseState.startPanX = panX;
+      mouseState.startPanY = panY;
+
+      const btnMap = { 0: 1, 1: 2, 2: 3 };
+      mouseState.button = btnMap[event.button] || 1;
+
+      if (event.button === 1 || (event.button === 0 && (spacePressed || interactionMode === 'pan'))) {
+        mouseState.panning = true;
+        viewportSurface.classList.add('pan-dragging');
+        return;
+      }
+      mouseState.panning = false;
+      const pt = clientToRemote(event.clientX, event.clientY);
+      if (pt) {
+        remotePointerX = pt.x; remotePointerY = pt.y; updateRemoteCursor();
+        control('/button', { x: pt.x, y: pt.y, button: mouseState.button, action: 'down' }).catch(() => {});
+      }
+    });
+
+    viewportSurface.addEventListener('pointermove', event => {
+      if (event.pointerType === 'touch') return;
+      if (mouseState.down && mouseState.panning) {
+        const dx = event.clientX - mouseState.startX;
+        const dy = event.clientY - mouseState.startY;
+        if (Math.hypot(dx, dy) > 4) mouseState.moved = true;
+        zoomMode = 'manual';
+        panX = mouseState.startPanX + dx;
+        panY = mouseState.startPanY + dy;
+        applyZoom();
+        return;
+      }
+      const pt = clientToRemote(event.clientX, event.clientY);
+      if (pt) queueAbsMove(pt.x, pt.y);
+    });
+
+    const endMousePointer = event => {
+      if (event.pointerType === 'touch' || !mouseState.down) return;
+      mouseState.down = false;
+      viewportSurface.classList.remove('pan-dragging');
+      if (mouseState.panning) {
+        mouseState.panning = false;
+        if (!mouseState.moved && mouseState.button === 1) {
+          const pt = clientToRemote(event.clientX, event.clientY);
+          if (pt) {
+            showRipple(event.clientX, event.clientY, false);
+            control('/button', { x: pt.x, y: pt.y, button: 1, action: 'click' }).catch(() => {});
+          }
+        }
+        return;
+      }
+      const pt = clientToRemote(event.clientX, event.clientY);
+      if (pt) {
+        control('/button', { x: pt.x, y: pt.y, button: mouseState.button, action: 'up' }).catch(() => {});
+      } else {
+        control('/button', { button: mouseState.button, action: 'up' }).catch(() => {});
+      }
+    };
+    viewportSurface.addEventListener('pointerup', endMousePointer);
+    viewportSurface.addEventListener('pointercancel', endMousePointer);
+
+    viewportSurface.addEventListener('dblclick', event => {
+      event.preventDefault();
+      const pt = clientToRemote(event.clientX, event.clientY);
+      if (pt) {
+        showRipple(event.clientX, event.clientY, false);
+        control('/button', { x: pt.x, y: pt.y, button: 1, action: 'dblclick' }).catch(() => {});
+      }
+    });
+
+    viewportSurface.addEventListener('contextmenu', event => {
+      event.preventDefault();
+    });
+
+    viewportSurface.addEventListener('wheel', event => {
+      event.preventDefault();
+      if (event.ctrlKey || event.metaKey) {
+        const delta = event.deltaY < 0 ? 0.15 : -0.15;
+        setZoom(zoomLevel + delta, true, event.clientX, event.clientY);
+        return;
+      }
+      const pt = clientToRemote(event.clientX, event.clientY);
+      const direction = event.deltaY < 0 ? 'up' : 'down';
+      const payload = pt ? { x: pt.x, y: pt.y, direction, amount: 2 } : { direction, amount: 2 };
+      control('/scroll', payload).catch(() => {});
+    }, { passive: false });
+
+    // --- Joystick & Bottom Touchpad (Exact Spine Monitor Parity) ---
     function movementLoop(now) {
       const dt = Math.min(50, now - lastFrame) / 1000; lastFrame = now;
       if (vx || vy) { queueMove(vx * dt, vy * dt); movementFrame = requestAnimationFrame(movementLoop); }
@@ -762,6 +1153,7 @@
       controlOpacity = Number(event.target.value) / 100; byId('controlOpacityValue').textContent = `${event.target.value}%`; document.documentElement.style.setProperty('--control-opacity', controlOpacity); saveSetting('spineControlOpacity', controlOpacity);
     });
     applyControlSettings();
+    updateInteractionModeUI();
 
     controlsToggle.addEventListener('click', () => {
       controlsHidden = !controlsHidden; document.body.classList.toggle('controls-hidden', controlsHidden); controlsToggle.classList.toggle('active', !controlsHidden);
@@ -769,13 +1161,33 @@
       if (controlsHidden) stopVelocity();
     });
     fitQuick.addEventListener('click', () => fitDesktop());
+    hudZoomLabel.addEventListener('click', () => fitDesktop());
+    hudZoomOut.addEventListener('click', () => setZoom(zoomLevel - .25));
+    hudZoomIn.addEventListener('click', () => {
+      setZoom(zoomLevel + .25);
+      if (zoomLevel > 1.05 && interactionMode !== 'pan') setInteractionMode('pan', false);
+    });
     byId('zoomFit').addEventListener('click', () => fitDesktop());
-    byId('zoomOut').addEventListener('click', () => setZoom(zoomLevel - .1));
-    byId('zoomIn').addEventListener('click', () => setZoom(zoomLevel + .1));
+    byId('zoomOut').addEventListener('click', () => setZoom(zoomLevel - .2));
+    byId('zoomIn').addEventListener('click', () => {
+      setZoom(zoomLevel + .2);
+      if (zoomLevel > 1.05 && interactionMode !== 'pan') setInteractionMode('pan', false);
+    });
     byId('zoomRange').addEventListener('input', event => setZoom(Number(event.target.value) / 100, false));
+    byId('zoomRange').addEventListener('change', event => setZoom(Number(event.target.value) / 100, true));
+    for (const btn of document.querySelectorAll('[data-pan]')) {
+      btn.addEventListener('click', () => {
+        const dir = btn.dataset.pan;
+        if (dir === 'center') { panX = panY = 0; applyZoom(); scheduleMonitorUpdate(); }
+        else if (dir === 'left') nudgePan(120, 0);
+        else if (dir === 'right') nudgePan(-120, 0);
+        else if (dir === 'up') nudgePan(0, 120);
+        else if (dir === 'down') nudgePan(0, -120);
+      });
+    }
     byId('maximizeWindow').addEventListener('click', async () => {
-      try { fitDesktop(false); await control('/window', { action: 'maximize' }); settingsSheet.close(); setStatus('Window maximized · 1080p fitted', connected ? 'connected' : ''); }
-      catch (_) { setStatus('Could not maximize the active window'); }
+      try { await control('/window', { action: 'maximize' }); setStatus('Active window maximized', connected ? 'connected' : ''); }
+      catch (_) { setStatus('Could not maximize window'); }
     });
     byId('resetSettings').addEventListener('click', () => {
       pointerSpeedMultiplier = 1; controlScale = 1; controlOpacity = .9; hapticsEnabled = true; touchpadEnabled = joystickEnabled = clicksEnabled = true;
@@ -833,8 +1245,8 @@
     for (const name of ['gesturestart', 'gesturechange', 'gestureend', 'contextmenu', 'dblclick']) byId('controls').addEventListener(name, event => event.preventDefault(), { passive: false });
 
     window.__touchMonitor = {
-      control, queueMove, fitDesktop, setZoom, showKeyboard, hideKeyboard, settingsSheet, applyControlSettings,
-      get connected() { return connected; }, get zoomMode() { return zoomMode; },
+      control, queueMove, queueAbsMove, fitDesktop, setZoom, nudgePan, setInteractionMode, showKeyboard, hideKeyboard, settingsSheet, applyControlSettings,
+      get connected() { return connected; }, get zoomMode() { return zoomMode; }, get zoomLevel() { return zoomLevel; }, get interactionMode() { return interactionMode; },
       get controls() { return { touchpadEnabled, joystickEnabled, clicksEnabled, controlsHidden }; },
     };
   </script>

@@ -809,29 +809,50 @@ class ArchHandler(BaseHTTPRequestHandler):
 
         # Spine-compatible direct OS pointer & keyboard controller (xdotool on DISPLAY)
         if path in ("/control/move", "/api/control/move"):
-            dx = max(-160, min(160, int(body.get("dx", 0))))
-            dy = max(-160, min(160, int(body.get("dy", 0))))
-            if dx or dy:
-                run_xdotool("mousemove_relative", "--", str(dx), str(dy))
+            if "x" in body and "y" in body:
+                x = max(0, min(3840, int(round(float(body["x"])))))
+                y = max(0, min(2160, int(round(float(body["y"])))))
+                run_xdotool("mousemove", str(x), str(y))
+            else:
+                dx = max(-400, min(400, int(round(float(body.get("dx", 0))))))
+                dy = max(-400, min(400, int(round(float(body.get("dy", 0))))))
+                if dx or dy:
+                    run_xdotool("mousemove_relative", "--", str(dx), str(dy))
             return self._send_json(200, {"ok": True})
 
-        if path in ("/control/button", "/api/control/button"):
-            button = int(body.get("button", 0))
-            action = str(body.get("action", ""))
-            if button not in {1, 2, 3} or action not in {"down", "up", "click"}:
+        if path in ("/control/button", "/api/control/button", "/control/click", "/api/control/click"):
+            button = int(body.get("button", 1))
+            action = str(body.get("action", "click"))
+            if button not in {1, 2, 3} or action not in {"down", "up", "click", "dblclick"}:
                 return self._send_json(400, {"ok": False, "error": "invalid_button"})
-            if button == 3 and action == "click":
+            if button == 3 and action in {"click", "down"}:
                 run_xdotool("keyup", "Alt_L", "Alt_R", "Control_L", "Control_R", "Super_L", "Super_R", "Shift_L", "Shift_R")
-            cmd = {"down": "mousedown", "up": "mouseup", "click": "click"}[action]
-            run_xdotool(cmd, str(button))
+            args: List[str] = []
+            if "x" in body and "y" in body:
+                x = max(0, min(3840, int(round(float(body["x"])))))
+                y = max(0, min(2160, int(round(float(body["y"])))))
+                args.extend(["mousemove", str(x), str(y)])
+            if action == "dblclick":
+                args.extend(["click", "--repeat", "2", "--delay", "45", str(button)])
+            else:
+                cmd = {"down": "mousedown", "up": "mouseup", "click": "click"}[action]
+                args.extend([cmd, str(button)])
+            run_xdotool(*args)
             return self._send_json(200, {"ok": True})
 
         if path in ("/control/scroll", "/api/control/scroll"):
             direction = str(body.get("direction", ""))
-            amount = max(1, min(5, int(body.get("amount", 1))))
-            if direction not in {"up", "down"}:
+            amount = max(1, min(8, int(body.get("amount", 1))))
+            btn_map = {"up": "4", "down": "5", "left": "6", "right": "7"}
+            if direction not in btn_map:
                 return self._send_json(400, {"ok": False, "error": "invalid_scroll"})
-            run_xdotool("click", "--repeat", str(amount), "--delay", "25", "4" if direction == "up" else "5")
+            args = []
+            if "x" in body and "y" in body:
+                x = max(0, min(3840, int(round(float(body["x"])))))
+                y = max(0, min(2160, int(round(float(body["y"])))))
+                args.extend(["mousemove", str(x), str(y)])
+            args.extend(["click", "--repeat", str(amount), "--delay", "20", btn_map[direction]])
+            run_xdotool(*args)
             return self._send_json(200, {"ok": True})
 
         if path in ("/control/key", "/api/control/key"):

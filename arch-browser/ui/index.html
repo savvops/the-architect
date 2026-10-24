@@ -158,6 +158,49 @@
       background: #000;
       overflow: hidden;
       touch-action: none;
+      pointer-events: none;
+    }
+    #viewportSurface {
+      position: absolute;
+      inset: 0;
+      z-index: 15;
+      background: transparent;
+      touch-action: none;
+      cursor: default;
+    }
+    #viewportSurface.pan-mode { cursor: grab; }
+    #viewportSurface.pan-dragging { cursor: grabbing; }
+    .zoom-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      background: #090e17;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 2px;
+      height: 32px;
+    }
+    .zoom-btn {
+      width: 26px;
+      height: 26px;
+      border: none;
+      border-radius: 6px;
+      background: var(--card);
+      color: #fff;
+      font-weight: 800;
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+    }
+    .zoom-btn:active { background: var(--accent); color: #000; }
+    .zoom-label {
+      min-width: 42px;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent);
+      cursor: pointer;
+      padding: 0 4px;
     }
 
     /* Floating Virtual Remote Pointer Cursor (Exact Spine Monitor Cursor) */
@@ -616,6 +659,12 @@
 
     <!-- Header Actions -->
     <div class="header-actions">
+      <div class="zoom-group" title="Zoom & Pan">
+        <button class="zoom-btn" onclick="stepZoom(-0.25)">−</button>
+        <span id="zoomLabel" class="zoom-label" onclick="resetZoom()" title="Click to fit 100%">100%</span>
+        <button class="zoom-btn" onclick="stepZoom(0.25)">+</button>
+      </div>
+      <button id="btnTouchMode" class="btn btn-secondary" onclick="toggleTouchMode()" title="Switch 1-finger drag between Touch/Cursor and Pan">👆 Touch</button>
       <button id="btnTakeover" class="btn btn-takeover" onclick="toggleTakeover()">Take over</button>
       <button id="btnToggleKeyboard" class="btn btn-secondary" onclick="toggleKeyboard()" title="Show Keyboard">⌨️ Key</button>
       <button id="btnToggleHud" class="btn btn-secondary active" onclick="toggleHud()">🎮 Controls</button>
@@ -630,6 +679,7 @@
     <div id="viewportPane">
       <!-- Live 60fps Desktop Mirror (Exact Spine Monitor Pattern: view_only=1 so controls never conflict) -->
       <iframe id="desktopFrame" title="Arch Desktop" src="/novnc/vnc_lite.html?autoconnect=1&resize=scale&view_clip=0&view_only=1&path=websockify&reconnect=1" allow="clipboard-read; clipboard-write"></iframe>
+      <div id="viewportSurface" role="application" aria-label="Interactive remote desktop"></div>
 
       <!-- Remote Pointer Cursor (Exact Spine Monitor SVG Pointer) -->
       <div id="remoteCursor" aria-hidden="true">
@@ -804,22 +854,93 @@
 
     // --- Spine Monitor Pointer State & Canvas Tracking ---
     const desktopFrame = document.getElementById('desktopFrame');
+    const viewportSurface = document.getElementById('viewportSurface');
     const remoteCursor = document.getElementById('remoteCursor');
     const connDot = document.getElementById('connDot');
-    let framebufferWidth = 1280, framebufferHeight = 800;
-    let remotePointerX = 640, remotePointerY = 400;
+    const zoomLabel = document.getElementById('zoomLabel');
+    const btnTouchMode = document.getElementById('btnTouchMode');
+    let framebufferWidth = 1920, framebufferHeight = 1080;
+    let remotePointerX = 960, remotePointerY = 540;
+    let zoomLevel = 1, panX = 0, panY = 0;
+    let interactionMode = 'touch';
     let connected = false;
     let domElementsCache = [];
     let isHuman = false;
+    let pendingAbs = null, absMoveBusy = false;
 
     function desktopCanvas(doc = desktopFrame.contentDocument) {
       if (!doc) return null;
       return [...doc.querySelectorAll('canvas')].sort((a, b) => b.width * b.height - a.width * a.height)[0] || null;
     }
 
+    function applyZoom(canvas = desktopCanvas()) {
+      zoomLabel.textContent = `${Math.round(zoomLevel * 100)}%`;
+      if (!canvas) return;
+      const doc = canvas.ownerDocument;
+      for (const el of [canvas.parentElement, doc?.scrollingElement, doc?.body]) {
+        if (el) el.style.overflow = 'visible';
+      }
+      const maxX = Math.max(canvas.offsetWidth * 0.45, (canvas.offsetWidth * zoomLevel) / 2);
+      const maxY = Math.max(canvas.offsetHeight * 0.65, (canvas.offsetHeight * zoomLevel) / 2);
+      panX = Math.max(-maxX, Math.min(maxX, panX));
+      panY = Math.max(-maxY, Math.min(maxY, panY));
+      canvas.style.transformOrigin = 'center center';
+      canvas.style.transform = (zoomLevel === 1 && panX === 0 && panY === 0) ? '' : `translate3d(${panX}px, ${panY}px, 0) scale(${zoomLevel})`;
+      updateRemoteCursor(canvas);
+    }
+
+    window.stepZoom = function(delta) {
+      zoomLevel = Math.max(0.6, Math.min(4.0, Math.round((zoomLevel + delta) * 20) / 20));
+      if (zoomLevel > 1.05 && interactionMode !== 'pan') setTouchMode('pan');
+      applyZoom();
+    };
+
+    window.resetZoom = function() {
+      zoomLevel = 1; panX = 0; panY = 0;
+      setTouchMode('touch');
+      applyZoom();
+    };
+
+    function setTouchMode(mode) {
+      interactionMode = mode === 'pan' ? 'pan' : 'touch';
+      btnTouchMode.textContent = interactionMode === 'pan' ? '✋ Pan' : '👆 Touch';
+      btnTouchMode.classList.toggle('active', interactionMode === 'pan');
+      viewportSurface.classList.toggle('pan-mode', interactionMode === 'pan');
+    }
+
+    window.toggleTouchMode = function() {
+      setTouchMode(interactionMode === 'pan' ? 'touch' : 'pan');
+    };
+
+    function clientToRemote(clientX, clientY, canvas = desktopCanvas()) {
+      if (!canvas || !framebufferWidth || !framebufferHeight) return null;
+      const rect = canvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) return null;
+      const x = Math.round(Math.max(0, Math.min(framebufferWidth - 1, ((clientX - rect.left) / rect.width) * framebufferWidth)));
+      const y = Math.round(Math.max(0, Math.min(framebufferHeight - 1, ((clientY - rect.top) / rect.height) * framebufferHeight)));
+      return { x, y };
+    }
+
+    function queueAbsMove(x, y) {
+      remotePointerX = x; remotePointerY = y; updateRemoteCursor();
+      pendingAbs = { x, y };
+      flushAbsMove();
+    }
+
+    async function flushAbsMove() {
+      if (absMoveBusy || !pendingAbs) return;
+      const target = pendingAbs;
+      pendingAbs = null;
+      absMoveBusy = true;
+      try { await apiPost('/control/move', target); }
+      catch (_) {}
+      finally { absMoveBusy = false; if (pendingAbs) flushAbsMove(); }
+    }
+
     function updateRemoteCursor(canvas = desktopCanvas()) {
       if (!canvas || remotePointerX === null || remotePointerY === null || !framebufferWidth || !framebufferHeight) return;
       const rect = canvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
       const x = rect.left + Math.max(0, Math.min(framebufferWidth - 1, remotePointerX)) / framebufferWidth * rect.width;
       const y = rect.top + Math.max(0, Math.min(framebufferHeight - 1, remotePointerY)) / framebufferHeight * rect.height;
       remoteCursor.style.transform = `translate3d(${x - 2}px, ${y - 2}px, 0)`;
@@ -841,8 +962,9 @@
         if (doc) {
           const canvas = desktopCanvas(doc);
           if (canvas) {
-            framebufferWidth = canvas.width || 1280;
-            framebufferHeight = canvas.height || 800;
+            framebufferWidth = canvas.width || 1920;
+            framebufferHeight = canvas.height || 1080;
+            applyZoom(canvas);
             updateRemoteCursor(canvas);
           }
         }
@@ -863,8 +985,162 @@
     });
 
     window.addEventListener('resize', () => {
+      applyZoom();
       updateRemoteCursor();
     });
+
+    // --- Direct Touch & Mouse Cursor Handlers on viewportSurface ---
+    let tState = { active: false, pinching: false, startX: 0, startY: 0, startPanX: 0, startPanY: 0, moved: false, lpFired: false, lpTimer: null, pDist: 0, pZoom: 1, pMidX: 0, pMidY: 0, pPanX: 0, pPanY: 0, lastTap: 0, lastTapX: 0, lastTapY: 0 };
+    viewportSurface.addEventListener('touchstart', e => {
+      e.preventDefault();
+      if (e.touches.length >= 2) {
+        if (tState.lpTimer) clearTimeout(tState.lpTimer);
+        tState.pinching = true; tState.moved = true;
+        const t0 = e.touches[0], t1 = e.touches[1];
+        tState.pDist = Math.max(20, Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY));
+        tState.pZoom = zoomLevel;
+        tState.pMidX = (t0.clientX + t1.clientX) / 2;
+        tState.pMidY = (t0.clientY + t1.clientY) / 2;
+        tState.pPanX = panX; tState.pPanY = panY;
+        return;
+      }
+      if (e.touches.length === 1) {
+        const t = e.touches[0];
+        tState.active = true; tState.pinching = false; tState.moved = false; tState.lpFired = false;
+        tState.startX = t.clientX; tState.startY = t.clientY;
+        tState.startPanX = panX; tState.startPanY = panY;
+        if (tState.lpTimer) clearTimeout(tState.lpTimer);
+        tState.lpTimer = setTimeout(() => {
+          if (tState.active && !tState.moved && !tState.pinching) {
+            tState.lpFired = true;
+            const pt = clientToRemote(tState.startX, tState.startY);
+            if (pt) {
+              remotePointerX = pt.x; remotePointerY = pt.y; updateRemoteCursor();
+              if (navigator.vibrate) navigator.vibrate(18);
+              apiPost('/control/button', { x: pt.x, y: pt.y, button: 3, action: 'click' });
+            }
+          }
+        }, 460);
+      }
+    }, { passive: false });
+
+    viewportSurface.addEventListener('touchmove', e => {
+      e.preventDefault();
+      if (e.touches.length >= 2) {
+        if (tState.lpTimer) clearTimeout(tState.lpTimer);
+        tState.pinching = true; tState.moved = true;
+        const t0 = e.touches[0], t1 = e.touches[1];
+        const dist = Math.max(20, Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY));
+        const midX = (t0.clientX + t1.clientX) / 2, midY = (t0.clientY + t1.clientY) / 2;
+        zoomLevel = Math.max(0.6, Math.min(4.0, tState.pZoom * (dist / tState.pDist)));
+        panX = tState.pPanX + (midX - tState.pMidX);
+        panY = tState.pPanY + (midY - tState.pMidY);
+        applyZoom();
+        return;
+      }
+      if (!tState.active || tState.pinching || e.touches.length !== 1) return;
+      const t = e.touches[0];
+      if (Math.hypot(t.clientX - tState.startX, t.clientY - tState.startY) > 9) {
+        tState.moved = true;
+        if (tState.lpTimer) clearTimeout(tState.lpTimer);
+      }
+      if (!tState.moved) return;
+      if (interactionMode === 'pan') {
+        panX = tState.startPanX + (t.clientX - tState.startX);
+        panY = tState.startPanY + (t.clientY - tState.startY);
+        applyZoom();
+      } else {
+        const pt = clientToRemote(t.clientX, t.clientY);
+        if (pt) queueAbsMove(pt.x, pt.y);
+      }
+    }, { passive: false });
+
+    const onSurfaceTouchEnd = e => {
+      if (tState.lpTimer) clearTimeout(tState.lpTimer);
+      if (e.touches.length === 0) {
+        if (tState.active && !tState.pinching && !tState.moved && !tState.lpFired) {
+          const now = performance.now();
+          const pt = clientToRemote(tState.startX, tState.startY);
+          if (pt) {
+            remotePointerX = pt.x; remotePointerY = pt.y; updateRemoteCursor();
+            const isDbl = (now - tState.lastTap < 320) && Math.hypot(tState.startX - tState.lastTapX, tState.startY - tState.lastTapY) < 28;
+            tState.lastTap = isDbl ? 0 : now; tState.lastTapX = tState.startX; tState.lastTapY = tState.startY;
+            if (navigator.vibrate) navigator.vibrate(10);
+            apiPost('/control/button', { x: pt.x, y: pt.y, button: 1, action: isDbl ? 'dblclick' : 'click' });
+          }
+        }
+        tState.active = false; tState.pinching = false;
+      }
+    };
+    viewportSurface.addEventListener('touchend', onSurfaceTouchEnd, { passive: false });
+    viewportSurface.addEventListener('touchcancel', onSurfaceTouchEnd, { passive: false });
+
+    let mDown = false, mPan = false, mBtn = 1, mStartX = 0, mStartY = 0, mStartPanX = 0, mStartPanY = 0, mMoved = false;
+    viewportSurface.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'touch') return;
+      e.preventDefault();
+      viewportSurface.setPointerCapture(e.pointerId);
+      mDown = true; mMoved = false;
+      mStartX = e.clientX; mStartY = e.clientY;
+      mStartPanX = panX; mStartPanY = panY;
+      mBtn = ({ 0: 1, 1: 2, 2: 3 })[e.button] || 1;
+      if (e.button === 1 || (e.button === 0 && interactionMode === 'pan')) {
+        mPan = true;
+        viewportSurface.classList.add('pan-dragging');
+        return;
+      }
+      mPan = false;
+      const pt = clientToRemote(e.clientX, e.clientY);
+      if (pt) {
+        remotePointerX = pt.x; remotePointerY = pt.y; updateRemoteCursor();
+        apiPost('/control/button', { x: pt.x, y: pt.y, button: mBtn, action: 'down' });
+      }
+    });
+    viewportSurface.addEventListener('pointermove', e => {
+      if (e.pointerType === 'touch') return;
+      if (mDown && mPan) {
+        const dx = e.clientX - mStartX, dy = e.clientY - mStartY;
+        if (Math.hypot(dx, dy) > 4) mMoved = true;
+        panX = mStartPanX + dx; panY = mStartPanY + dy;
+        applyZoom();
+        return;
+      }
+      const pt = clientToRemote(e.clientX, e.clientY);
+      if (pt) queueAbsMove(pt.x, pt.y);
+    });
+    const onSurfacePointerUp = e => {
+      if (e.pointerType === 'touch' || !mDown) return;
+      mDown = false;
+      viewportSurface.classList.remove('pan-dragging');
+      if (mPan) {
+        mPan = false;
+        if (!mMoved && mBtn === 1) {
+          const pt = clientToRemote(e.clientX, e.clientY);
+          if (pt) apiPost('/control/button', { x: pt.x, y: pt.y, button: 1, action: 'click' });
+        }
+        return;
+      }
+      const pt = clientToRemote(e.clientX, e.clientY);
+      apiPost('/control/button', pt ? { x: pt.x, y: pt.y, button: mBtn, action: 'up' } : { button: mBtn, action: 'up' });
+    };
+    viewportSurface.addEventListener('pointerup', onSurfacePointerUp);
+    viewportSurface.addEventListener('pointercancel', onSurfacePointerUp);
+    viewportSurface.addEventListener('dblclick', e => {
+      e.preventDefault();
+      const pt = clientToRemote(e.clientX, e.clientY);
+      if (pt) apiPost('/control/button', { x: pt.x, y: pt.y, button: 1, action: 'dblclick' });
+    });
+    viewportSurface.addEventListener('contextmenu', e => e.preventDefault());
+    viewportSurface.addEventListener('wheel', e => {
+      e.preventDefault();
+      if (e.ctrlKey || e.metaKey) {
+        stepZoom(e.deltaY < 0 ? 0.15 : -0.15);
+        return;
+      }
+      const pt = clientToRemote(e.clientX, e.clientY);
+      const dir = e.deltaY < 0 ? 'up' : 'down';
+      apiPost('/control/scroll', pt ? { x: pt.x, y: pt.y, direction: dir, amount: 2 } : { direction: dir, amount: 2 });
+    }, { passive: false });
 
     // --- Spine Movement Coalescing Queue (Smooth Analog Motion) ---
     let pendingDX = 0, pendingDY = 0, moveBusy = false;
