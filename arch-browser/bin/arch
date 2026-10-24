@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
-"""arch — Arch Browser agent CLI.
+"""arch — Arch Browser CLI (stdlib only).
 
-Drive Arch Browser from any terminal or agent process:
-  arch status
-  arch goto <url>
-  arch dom
-  arch click <selector>
-  arch fill <selector> <text>
-  arch type <text> [--selector sel]
-  arch press <key>
-  arch takeover
-  arch release
-  arch shot [output.png]
-  arch task "<goal>"
+Env: ARCH_URL (default http://127.0.0.1:8901), ARCH_TOKEN (bearer), ARCH_LEASE (lease id).
+
+  arch status | dom | tabs
+  arch goto <url>          arch back | forward
+  arch click <index|arch-N|css>
+  arch fill <index|css> <text>
+  arch type <text> [--selector S]      arch press <key>
+  arch scroll [down|up] [--amount N]   arch wait [--selector S] [--text T] [--timeout N]
+  arch dialog accept|dismiss [--text T]
+  arch tab-new [url]       arch tab-switch <id>
+  arch eval <js>           arch shot [out.png]
+  arch lease <holder> [--ttl N]        arch unlease <lease_id>
+  arch takeover | release  arch classify <question> <opt1> <opt2> ...
+  arch task "<goal>" [--max-steps N]
 """
 
 import argparse
@@ -25,106 +27,106 @@ import urllib.request
 ARCH_URL = os.environ.get("ARCH_URL", "http://127.0.0.1:8901").rstrip("/")
 
 
-def _post(endpoint: str, data: dict) -> dict:
-    req = urllib.request.Request(
-        f"{ARCH_URL}{endpoint}",
-        data=json.dumps(data).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-    )
+def _headers(json_body: bool = False) -> dict:
+    h = {}
+    if json_body:
+        h["Content-Type"] = "application/json"
+    if os.environ.get("ARCH_TOKEN"):
+        h["Authorization"] = "Bearer " + os.environ["ARCH_TOKEN"]
+    if os.environ.get("ARCH_LEASE"):
+        h["X-Arch-Lease"] = os.environ["ARCH_LEASE"]
+    return h
+
+
+def _req(method: str, endpoint: str, data: dict = None, timeout: float = 30, raw: bool = False):
+    body = json.dumps(data).encode() if data is not None else None
+    req = urllib.request.Request(f"{ARCH_URL}{endpoint}", data=body, method=method, headers=_headers(body is not None))
     try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            return json.loads(resp.read())
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            payload = resp.read()
+            return payload if raw else json.loads(payload)
     except urllib.error.HTTPError as err:
-        body = err.read().decode("utf-8")
+        text = err.read().decode("utf-8", "replace")
         try:
-            return json.loads(body)
+            return json.loads(text)
         except Exception:
-            return {"ok": False, "error": f"HTTP {err.code}: {body}"}
-
-
-def _get(endpoint: str) -> dict:
-    req = urllib.request.Request(f"{ARCH_URL}{endpoint}")
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read())
-    except Exception as err:
+            return {"ok": False, "error": f"HTTP {err.code}: {text[:300]}"}
+    except Exception as err:  # noqa: BLE001
         return {"ok": False, "error": str(err)}
 
 
 def main():
-    parser = argparse.ArgumentParser(prog="arch", description="Drive Arch Browser")
-    sub = parser.add_subparsers(dest="cmd")
-
-    sub.add_parser("status", help="Get browser and takeover status")
-    
-    p_goto = sub.add_parser("goto", help="Navigate to URL")
-    p_goto.add_argument("url", help="Destination URL")
-
-    sub.add_parser("dom", help="Inspect interactive DOM elements")
-
-    p_click = sub.add_parser("click", help="Click an element")
-    p_click.add_argument("selector", help="CSS selector or [data-arch-id]")
-
-    p_fill = sub.add_parser("fill", help="Fill an input value")
-    p_fill.add_argument("selector", help="CSS selector")
-    p_fill.add_argument("text", help="Text to fill")
-
-    p_type = sub.add_parser("type", help="Type keystrokes")
-    p_type.add_argument("text", help="Text to type")
-    p_type.add_argument("--selector", help="Optional selector to focus first")
-
-    p_press = sub.add_parser("press", help="Press a special key")
-    p_press.add_argument("key", default="Enter", nargs="?", help="Key name (Enter, Tab, Escape)")
-
-    sub.add_parser("takeover", help="Lock out agents for human takeover")
-    sub.add_parser("release", help="Release takeover, allow agents")
-
-    p_eval = sub.add_parser("eval", help="Evaluate JavaScript in page")
-    p_eval.add_argument("js", help="JavaScript code snippet")
-
-    p_shot = sub.add_parser("shot", help="Capture screenshot")
-    p_shot.add_argument("output", default="screenshot.png", nargs="?", help="Output file path")
-
-    p_task = sub.add_parser("task", help="Execute autonomous task goal")
-    p_task.add_argument("goal", help="Natural language objective")
-    p_task.add_argument("--max-steps", type=int, default=10, help="Max step budget")
-
-    args = parser.parse_args()
-    if not args.cmd:
-        parser.print_help()
+    p = argparse.ArgumentParser(prog="arch", description="Drive Arch Browser")
+    s = p.add_subparsers(dest="cmd")
+    for name in ("status", "dom", "tabs", "back", "forward", "takeover", "release"):
+        s.add_parser(name)
+    s.add_parser("goto").add_argument("url")
+    s.add_parser("click").add_argument("selector")
+    f = s.add_parser("fill"); f.add_argument("selector"); f.add_argument("text")
+    t = s.add_parser("type"); t.add_argument("text"); t.add_argument("--selector")
+    s.add_parser("press").add_argument("key", nargs="?", default="Enter")
+    sc = s.add_parser("scroll"); sc.add_argument("direction", nargs="?", default="down"); sc.add_argument("--amount", type=int, default=600); sc.add_argument("--selector")
+    w = s.add_parser("wait"); w.add_argument("--selector"); w.add_argument("--text"); w.add_argument("--timeout", type=float, default=10)
+    d = s.add_parser("dialog"); d.add_argument("choice", choices=["accept", "dismiss"]); d.add_argument("--text")
+    s.add_parser("tab-new").add_argument("url", nargs="?", default="about:blank")
+    s.add_parser("tab-switch").add_argument("id")
+    s.add_parser("eval").add_argument("js")
+    s.add_parser("shot").add_argument("output", nargs="?", default="screenshot.png")
+    l = s.add_parser("lease"); l.add_argument("holder"); l.add_argument("--ttl", type=float, default=120)
+    s.add_parser("unlease").add_argument("lease_id")
+    c = s.add_parser("classify"); c.add_argument("question"); c.add_argument("options", nargs="+")
+    k = s.add_parser("task"); k.add_argument("goal"); k.add_argument("--max-steps", type=int, default=10)
+    a = p.parse_args()
+    if not a.cmd:
+        p.print_help()
         sys.exit(1)
 
-    if args.cmd == "status":
-        print(json.dumps(_get("/api/status"), indent=2))
-    elif args.cmd == "goto":
-        print(json.dumps(_post("/api/goto", {"url": args.url}), indent=2))
-    elif args.cmd == "dom":
-        print(json.dumps(_get("/api/dom"), indent=2))
-    elif args.cmd == "click":
-        print(json.dumps(_post("/api/click", {"selector": args.selector}), indent=2))
-    elif args.cmd == "fill":
-        print(json.dumps(_post("/api/fill", {"selector": args.selector, "text": args.text}), indent=2))
-    elif args.cmd == "type":
-        print(json.dumps(_post("/api/type", {"text": args.text, "selector": args.selector}), indent=2))
-    elif args.cmd == "press":
-        print(json.dumps(_post("/api/press", {"key": args.key}), indent=2))
-    elif args.cmd == "takeover":
-        print(json.dumps(_post("/api/takeover", {}), indent=2))
-    elif args.cmd == "release":
-        print(json.dumps(_post("/api/release", {}), indent=2))
-    elif args.cmd == "task":
-        print(json.dumps(_post("/api/task", {"goal": args.goal, "max_steps": args.max_steps}), indent=2))
-    elif args.cmd == "eval":
-        print(json.dumps(_post("/api/eval", {"js": args.js}), indent=2))
-    elif args.cmd == "shot":
-        try:
-            with urllib.request.urlopen(f"{ARCH_URL}/api/screenshot", timeout=15) as resp:
-                data = resp.read()
-            with open(args.output, "wb") as f:
-                f.write(data)
-            print(json.dumps({"ok": True, "saved_to": args.output, "bytes": len(data)}))
-        except Exception as err:
-            print(json.dumps({"ok": False, "error": str(err)}))
+    simple_get = {"status": "/api/status", "dom": "/api/dom", "tabs": "/api/tabs"}
+    simple_post = {"back": "/api/back", "forward": "/api/forward", "takeover": "/api/takeover", "release": "/api/release"}
+    if a.cmd in simple_get:
+        out = _req("GET", simple_get[a.cmd])
+    elif a.cmd in simple_post:
+        out = _req("POST", simple_post[a.cmd], {})
+    elif a.cmd == "goto":
+        out = _req("POST", "/api/goto", {"url": a.url})
+    elif a.cmd == "click":
+        out = _req("POST", "/api/click", {"selector": a.selector})
+    elif a.cmd == "fill":
+        out = _req("POST", "/api/fill", {"selector": a.selector, "text": a.text})
+    elif a.cmd == "type":
+        out = _req("POST", "/api/type", {"text": a.text, "selector": a.selector})
+    elif a.cmd == "press":
+        out = _req("POST", "/api/press", {"key": a.key})
+    elif a.cmd == "scroll":
+        out = _req("POST", "/api/scroll", {"direction": a.direction, "amount": a.amount, "selector": a.selector})
+    elif a.cmd == "wait":
+        out = _req("POST", "/api/wait", {"selector": a.selector, "text": a.text, "timeout_s": a.timeout}, timeout=a.timeout + 10)
+    elif a.cmd == "dialog":
+        out = _req("POST", "/api/dialog", {"accept": a.choice == "accept", "text": a.text})
+    elif a.cmd == "tab-new":
+        out = _req("POST", "/api/tabs/new", {"url": a.url})
+    elif a.cmd == "tab-switch":
+        out = _req("POST", "/api/tabs/switch", {"id": a.id})
+    elif a.cmd == "eval":
+        out = _req("POST", "/api/eval", {"js": a.js})
+    elif a.cmd == "lease":
+        out = _req("POST", "/api/lease", {"holder": a.holder, "ttl_s": a.ttl})
+    elif a.cmd == "unlease":
+        out = _req("POST", "/api/lease/release", {"lease_id": a.lease_id})
+    elif a.cmd == "classify":
+        out = _req("POST", "/api/classify", {"question": a.question, "options": a.options}, timeout=120)
+    elif a.cmd == "task":
+        out = _req("POST", "/api/task", {"goal": a.goal, "max_steps": a.max_steps}, timeout=60 * a.max_steps)
+    elif a.cmd == "shot":
+        data = _req("GET", "/api/screenshot", raw=True)
+        if isinstance(data, dict):
+            out = data
+        else:
+            with open(a.output, "wb") as fh:
+                fh.write(data)
+            out = {"ok": True, "saved_to": a.output, "bytes": len(data)}
+    print(json.dumps(out, indent=2))
+    sys.exit(0 if out.get("ok") else 2)
 
 
 if __name__ == "__main__":

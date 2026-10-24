@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xauth \
  && rm -rf /var/lib/apt/lists/* \
  && useradd -m -u 1000 -s /bin/bash arch \
- && mkdir -p /tmp/.X11-unix /data/profile /data/logs /app \
+ && mkdir -p /tmp/.X11-unix /data/profile /data/logs /data/downloads /app \
  && chmod 1777 /tmp/.X11-unix \
  && chown -R arch:arch /data /app
 
@@ -29,11 +29,13 @@ WORKDIR /app
 COPY --chown=arch:arch cdp_bridge.py archd.py router.py entrypoint.sh /app/
 COPY --chown=arch:arch bin/ /app/bin/
 COPY --chown=arch:arch ui/ /app/ui/
+COPY --chown=arch:arch tests/ /app/tests/
 
 RUN chmod +x /app/entrypoint.sh /app/bin/arch /app/cdp_bridge.py /app/archd.py /app/router.py
 
 USER arch
 
+# Loopback-only by default (ARCH_BIND / ARCH_VNC_BIND); publish via Tailscale Serve, not -p.
 EXPOSE 6080 8901
 
 VOLUME ["/data/profile"]
