@@ -1,0 +1,12 @@
+[Unit]
+Description=Unified XFCE Desktop + Spine Touch Monitor Stack
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/run-desktop-stack.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

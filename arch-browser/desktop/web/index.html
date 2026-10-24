@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
+  <meta name="theme-color" content="#090b10">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Spine Monitor">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/app/images/icons/novnc-ios-180.png">
+  <title>Savv Spine Monitor</title>
+  <style>
+    :root { color-scheme: dark; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; background: #090b10; color: #f4f5f7; }
+    body { display: grid; place-items: center; min-height: 100svh; padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); }
+    main { width: min(100%, 420px); text-align: center; }
+    .mark { width: 56px; height: 56px; margin: 0 auto 18px; border: 1px solid #3b82f6; border-radius: 16px; display: grid; place-items: center; box-shadow: 0 0 32px #2563eb44; font-size: 26px; }
+    h1 { margin: 0 0 8px; font-size: clamp(22px, 7vw, 32px); letter-spacing: -.04em; }
+    p { margin: 0 0 24px; color: #9ca3af; line-height: 1.5; font-size: 14px; }
+    .status { display: flex; align-items: center; justify-content: center; gap: 9px; color: #d1d5db; font-size: 13px; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 14px #22c55e; animation: pulse 1.2s ease-in-out infinite alternate; }
+    @keyframes pulse { to { opacity: .4; } }
+    a { display: inline-flex; min-height: 48px; align-items: center; justify-content: center; margin-top: 24px; padding: 0 22px; border: 1px solid #374151; border-radius: 14px; color: white; text-decoration: none; touch-action: manipulation; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="mark" aria-hidden="true">⌁</div>
+    <h1>Savv Spine</h1>
+    <p>Opening the private live monitor. Analog mouse, left/right click, scrolling, and fit-to-screen mode are enabled.</p>
+    <div class="status"><span class="dot"></span><span>Connecting over Tailscale</span></div>
+    <a id="open" href="/mobile.html?v=16">Open touch monitor</a>
+  </main>
+  <script>
+    const target = document.getElementById('open').href;
+    const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    window.setTimeout(() => window.location.replace(target), standalone ? 0 : 500);
+  </script>
+</body>
+</html>

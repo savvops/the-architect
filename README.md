@@ -43,6 +43,13 @@ preconditions, focus checks, output capture, and verification it is B-tier appro
 Failure moves down one lane; never an unbounded retry loop. Every action has a before,
 an after, and evidence.
 
+## Subsystems
+
+- **`arch-browser/`**: Autonomous S-tier browser lane with headed noVNC, lease broker, numbered DOM, cheapest-model decision router (free-tier Google AI Studio Gemini + local Jev/Qwen GGUF), and Muse-style split-screen cockpit.
+  - **`arch-browser/desktop/`**: 1-command installer (`./install.sh`) for a unified 1080p Linux workstation desktop with Spine mobile touch monitor (analog stick, scroll wheel, click cluster, keyboard), XFCE desktop, and persistent `archd` background daemon.
+- **`appctl/`**: Desktop OS control plane with accessibility tree automation, macro nodes, and OCR visual grounding.
+
+
 ## Build order
 
 1. [x] `appctl` — cross-platform open/focus/status/quit lifecycle adapter

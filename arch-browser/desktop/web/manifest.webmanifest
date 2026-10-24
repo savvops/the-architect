@@ -1,0 +1,19 @@
+{
+  "name": "Savv Spine Touch Monitor",
+  "short_name": "Spine Monitor",
+  "description": "Private mobile touch interface for the Savv Spine headless desktop.",
+  "id": "/mobile.html",
+  "start_url": "/mobile.html?v=12",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#07090d",
+  "theme_color": "#07090d",
+  "icons": [
+    {
+      "src": "/app/images/icons/novnc-ios-180.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}
