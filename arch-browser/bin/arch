@@ -79,6 +79,9 @@ def main():
     sub.add_parser("takeover", help="Lock out agents for human takeover")
     sub.add_parser("release", help="Release takeover, allow agents")
 
+    p_eval = sub.add_parser("eval", help="Evaluate JavaScript in page")
+    p_eval.add_argument("js", help="JavaScript code snippet")
+
     p_shot = sub.add_parser("shot", help="Capture screenshot")
     p_shot.add_argument("output", default="screenshot.png", nargs="?", help="Output file path")
 
@@ -111,6 +114,8 @@ def main():
         print(json.dumps(_post("/api/release", {}), indent=2))
     elif args.cmd == "task":
         print(json.dumps(_post("/api/task", {"goal": args.goal, "max_steps": args.max_steps}), indent=2))
+    elif args.cmd == "eval":
+        print(json.dumps(_post("/api/eval", {"js": args.js}), indent=2))
     elif args.cmd == "shot":
         try:
             with urllib.request.urlopen(f"{ARCH_URL}/api/screenshot", timeout=15) as resp:

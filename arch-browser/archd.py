@@ -150,21 +150,29 @@ class CDPDriver:
         with urllib.request.urlopen(f"http://127.0.0.1:{self.port}{path}", timeout=8) as r:
             return json.loads(r.read())
 
-    def _ensure(self):
-        targets = self._get_json("/json/list")
-        page = next((t for t in targets if t.get("type") == "page"), None)
-        if not page:
-            page = self._get_json("/json/new?about:blank")
-        if self.ws:
+    def _ensure(self, max_retries: int = 30):
+        last_err = None
+        for attempt in range(max_retries):
             try:
-                self.ws.sock.close()
-            except Exception:
-                pass
-        self.ws = WS(page["webSocketDebuggerUrl"])
-        self.pending = []
-        self.call("Page.enable")
-        self.call("Runtime.enable")
-        self.call("DOM.enable")
+                targets = self._get_json("/json/list")
+                page = next((t for t in targets if t.get("type") == "page"), None)
+                if not page:
+                    page = self._get_json("/json/new?about:blank")
+                if self.ws:
+                    try:
+                        self.ws.sock.close()
+                    except Exception:
+                        pass
+                self.ws = WS(page["webSocketDebuggerUrl"])
+                self.pending = []
+                self.call("Page.enable")
+                self.call("Runtime.enable")
+                self.call("DOM.enable")
+                return
+            except Exception as e:
+                last_err = e
+                time.sleep(1)
+        raise CDPError(f"Could not connect to Chrome DevTools on port {self.port}: {last_err}")
 
     def call(self, method: str, params: Optional[Dict[str, Any]] = None, timeout: float = 15) -> Dict[str, Any]:
         with self.lock:
@@ -210,10 +218,21 @@ class CDPDriver:
             "tabs_count": len([t for t in targets if t.get("type") == "page"]),
         }
 
+    def _normalize_selector(self, s: str) -> str:
+        if not s:
+            return s
+        s = s.strip()
+        if s.startswith("arch-"):
+            return f'[data-arch-id="{s}"]'
+        if s.startswith("@"):
+            return f'[data-arch-id="{s[1:]}"]'
+        return s
+
     def dom_elements(self) -> List[Dict[str, Any]]:
         return self.eval(f"({JS_DOM_INDEX})()") or []
 
     def click(self, selector: str) -> bool:
+        selector = self._normalize_selector(selector)
         js = f"""(() => {{
           const el = document.querySelector({json.dumps(selector)});
           if (!el) return false;
@@ -224,6 +243,7 @@ class CDPDriver:
         return bool(self.eval(js))
 
     def fill(self, selector: str, text: str) -> bool:
+        selector = self._normalize_selector(selector)
         js = f"""(() => {{
           const el = document.querySelector({json.dumps(selector)});
           if (!el) return false;
@@ -364,6 +384,13 @@ class ArchHandler(BaseHTTPRequestHandler):
         lock_err = BROKER.check_agent_allowed()
         if lock_err:
             return self._send_json(423, {"ok": False, "error": lock_err, "owner_takeover": True})
+
+        if path == "/api/eval":
+            js = body.get("js") or body.get("script")
+            if not js:
+                return self._send_json(400, {"ok": False, "error": "js required"})
+            res = DRIVER.eval(js)
+            return self._send_json(200, {"ok": True, "result": res})
 
         if path == "/api/navigate" or path == "/api/goto":
             url = body.get("url")
