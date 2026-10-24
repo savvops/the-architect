@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+"""arch — Arch Browser agent CLI.
+
+Drive Arch Browser from any terminal or agent process:
+  arch status
+  arch goto <url>
+  arch dom
+  arch click <selector>
+  arch fill <selector> <text>
+  arch type <text> [--selector sel]
+  arch press <key>
+  arch takeover
+  arch release
+  arch shot [output.png]
+  arch task "<goal>"
+"""
+
+import argparse
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
+
+ARCH_URL = os.environ.get("ARCH_URL", "http://127.0.0.1:8901").rstrip("/")
+
+
+def _post(endpoint: str, data: dict) -> dict:
+    req = urllib.request.Request(
+        f"{ARCH_URL}{endpoint}",
+        data=json.dumps(data).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as err:
+        body = err.read().decode("utf-8")
+        try:
+            return json.loads(body)
+        except Exception:
+            return {"ok": False, "error": f"HTTP {err.code}: {body}"}
+
+
+def _get(endpoint: str) -> dict:
+    req = urllib.request.Request(f"{ARCH_URL}{endpoint}")
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read())
+    except Exception as err:
+        return {"ok": False, "error": str(err)}
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="arch", description="Drive Arch Browser")
+    sub = parser.add_subparsers(dest="cmd")
+
+    sub.add_parser("status", help="Get browser and takeover status")
+    
+    p_goto = sub.add_parser("goto", help="Navigate to URL")
+    p_goto.add_argument("url", help="Destination URL")
+
+    sub.add_parser("dom", help="Inspect interactive DOM elements")
+
+    p_click = sub.add_parser("click", help="Click an element")
+    p_click.add_argument("selector", help="CSS selector or [data-arch-id]")
+
+    p_fill = sub.add_parser("fill", help="Fill an input value")
+    p_fill.add_argument("selector", help="CSS selector")
+    p_fill.add_argument("text", help="Text to fill")
+
+    p_type = sub.add_parser("type", help="Type keystrokes")
+    p_type.add_argument("text", help="Text to type")
+    p_type.add_argument("--selector", help="Optional selector to focus first")
+
+    p_press = sub.add_parser("press", help="Press a special key")
+    p_press.add_argument("key", default="Enter", nargs="?", help="Key name (Enter, Tab, Escape)")
+
+    sub.add_parser("takeover", help="Lock out agents for human takeover")
+    sub.add_parser("release", help="Release takeover, allow agents")
+
+    p_shot = sub.add_parser("shot", help="Capture screenshot")
+    p_shot.add_argument("output", default="screenshot.png", nargs="?", help="Output file path")
+
+    p_task = sub.add_parser("task", help="Execute autonomous task goal")
+    p_task.add_argument("goal", help="Natural language objective")
+    p_task.add_argument("--max-steps", type=int, default=10, help="Max step budget")
+
+    args = parser.parse_args()
+    if not args.cmd:
+        parser.print_help()
+        sys.exit(1)
+
+    if args.cmd == "status":
+        print(json.dumps(_get("/api/status"), indent=2))
+    elif args.cmd == "goto":
+        print(json.dumps(_post("/api/goto", {"url": args.url}), indent=2))
+    elif args.cmd == "dom":
+        print(json.dumps(_get("/api/dom"), indent=2))
+    elif args.cmd == "click":
+        print(json.dumps(_post("/api/click", {"selector": args.selector}), indent=2))
+    elif args.cmd == "fill":
+        print(json.dumps(_post("/api/fill", {"selector": args.selector, "text": args.text}), indent=2))
+    elif args.cmd == "type":
+        print(json.dumps(_post("/api/type", {"text": args.text, "selector": args.selector}), indent=2))
+    elif args.cmd == "press":
+        print(json.dumps(_post("/api/press", {"key": args.key}), indent=2))
+    elif args.cmd == "takeover":
+        print(json.dumps(_post("/api/takeover", {}), indent=2))
+    elif args.cmd == "release":
+        print(json.dumps(_post("/api/release", {}), indent=2))
+    elif args.cmd == "task":
+        print(json.dumps(_post("/api/task", {"goal": args.goal, "max_steps": args.max_steps}), indent=2))
+    elif args.cmd == "shot":
+        try:
+            with urllib.request.urlopen(f"{ARCH_URL}/api/screenshot", timeout=15) as resp:
+                data = resp.read()
+            with open(args.output, "wb") as f:
+                f.write(data)
+            print(json.dumps({"ok": True, "saved_to": args.output, "bytes": len(data)}))
+        except Exception as err:
+            print(json.dumps({"ok": False, "error": str(err)}))
+
+
+if __name__ == "__main__":
+    main()

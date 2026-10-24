@@ -1,0 +1,36 @@
+services:
+  arch-browser:
+    build: .
+    container_name: arch-browser
+    ports:
+      - "6080:6080"
+      - "8901:8901"
+    environment:
+      ARCH_RESOLUTION: ${ARCH_RESOLUTION:-1280x800}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      JEV_LOCAL_URL: ${JEV_LOCAL_URL:-http://127.0.0.1:12345}
+      ARCH_TIER1_MODEL: ${ARCH_TIER1_MODEL:-google/gemini-2.0-flash-lite-001}
+      ARCH_TIER2_MODEL: ${ARCH_TIER2_MODEL:-deepseek/deepseek-chat}
+    volumes:
+      - ./profile:/data/profile
+    shm_size: 1gb
+    restart: unless-stopped
+
+  jev-local:
+    image: ghcr.io/ggerganov/llama.cpp:server
+    container_name: arch-jev-local
+    profiles:
+      - local-llm
+    ports:
+      - "12345:8080"
+    volumes:
+      - ./models:/models
+    command: >
+      -m /models/Jev-Style-Qwen3.5-2B-Decision-Q4_K_M.gguf
+      --host 0.0.0.0
+      --port 8080
+      -c 2048
+      -ngl 0
+    restart: unless-stopped
