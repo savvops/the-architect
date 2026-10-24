@@ -1768,7 +1768,7 @@ def run_exec(tool_id, args_json_str=None):
     elif action == "browser_status":
         if not browser_status:
             return fail("exec", "browser module not available")
-        res = browser_status()
+        res = browser_status(target=validated_args.get("target"))
         return emit(res, code=0 if res.get("ok") else 1)
     elif action == "browser_bridge":
         if not bridge_browser:
@@ -1778,23 +1778,24 @@ def run_exec(tool_id, args_json_str=None):
             cookie_file=validated_args.get("cookie_file"),
             headless=validated_args.get("headless", True),
             prefer_ephemeral=validated_args.get("prefer_ephemeral", True),
+            target=validated_args.get("target"),
             sao_url=validated_args.get("sao_url"),
         )
         return emit(res, code=0 if res.get("ok") else 1)
     elif action == "browser_url":
         if not get_unified_browser_url:
             return fail("exec", "browser module not available")
-        res = get_unified_browser_url(sao_url=validated_args.get("sao_url"))
+        res = get_unified_browser_url(sao_url=validated_args.get("sao_url"), target=validated_args.get("target", "all"))
         return emit(res, code=0 if res.get("ok") else 1)
     elif action == "browser_takeover":
         if not takeover_browser:
             return fail("exec", "browser module not available")
-        res = takeover_browser(sao_url=validated_args.get("sao_url"))
+        res = takeover_browser(target=validated_args.get("target"), sao_url=validated_args.get("sao_url"))
         return emit(res, code=0 if res.get("ok") else 1)
     elif action == "browser_resume":
         if not resume_browser:
             return fail("exec", "browser module not available")
-        res = resume_browser(sao_url=validated_args.get("sao_url"))
+        res = resume_browser(target=validated_args.get("target"), sao_url=validated_args.get("sao_url"))
         return emit(res, code=0 if res.get("ok") else 1)
     elif action == "act":
         if not LocalRouter:
@@ -2002,22 +2003,27 @@ def main():
     p_bdestroy = b_sub.add_parser("destroy", help="terminate worker and purge temporary profile directory")
     p_bdestroy.add_argument("worker_id", help="worker ID, PID, or 'all'")
 
-    b_sub.add_parser("status", help="check installed browsers and SAO bridge status")
+    p_bstatus = b_sub.add_parser("status", help="check installed browsers and remote bridges (Spine & Oracle)")
+    p_bstatus.add_argument("--target", default=None, choices=["spine", "oracle"], help="target remote browser")
 
-    p_bbridge = b_sub.add_parser("bridge", help="route browser request via SAO bridge or auto-offload to ephemeral worker")
+    p_bbridge = b_sub.add_parser("bridge", help="route browser request via SAO/Oracle bridge or auto-offload to ephemeral worker")
     p_bbridge.add_argument("--url", default=None, help="target URL")
     p_bbridge.add_argument("--cookie-file", default=None, help="path to cookie export file to inject")
     p_bbridge.add_argument("--headless", action="store_true", default=True, help="run in background headless mode")
     p_bbridge.add_argument("--no-ephemeral", action="store_true", help="do not prefer ephemeral worker")
+    p_bbridge.add_argument("--target", default="spine", choices=["spine", "oracle"], help="target remote browser")
     p_bbridge.add_argument("--sao-url", default=None, help="custom SAO browser URL")
 
     p_burl = b_sub.add_parser("url", help="display the unified browser WebRTC & CDP URLs")
+    p_burl.add_argument("--target", default="all", choices=["all", "spine", "oracle"], help="browser target overview or specific remote")
     p_burl.add_argument("--sao-url", default=None, help="custom SAO browser URL")
 
-    p_btakeover = b_sub.add_parser("takeover", help="pause agents on SAO Browser for exclusive manual owner control")
+    p_btakeover = b_sub.add_parser("takeover", help="pause agents on remote cloud browser for exclusive manual owner control")
+    p_btakeover.add_argument("--target", default="spine", choices=["spine", "oracle"], help="target remote browser to pause")
     p_btakeover.add_argument("--sao-url", default=None, help="custom SAO browser URL")
 
-    p_bresume = b_sub.add_parser("resume", help="resume autonomous agent operations on SAO Browser")
+    p_bresume = b_sub.add_parser("resume", help="resume autonomous agent operations on remote cloud browser")
+    p_bresume.add_argument("--target", default="spine", choices=["spine", "oracle"], help="target remote browser to resume")
     p_bresume.add_argument("--sao-url", default=None, help="custom SAO browser URL")
 
     p_bact = b_sub.add_parser("act", help="execute CDP action on ephemeral browser worker")
@@ -2240,7 +2246,7 @@ def main():
             emit(res, code=0 if res.get("ok") else 1)
             return
         elif a.browser_action == "status":
-            res = browser_status()
+            res = browser_status(target=getattr(a, "target", None))
             emit(res, code=0 if res.get("ok") else 1)
             return
         elif a.browser_action == "bridge":
@@ -2251,6 +2257,7 @@ def main():
                 cookie_file=a.cookie_file,
                 headless=a.headless,
                 prefer_ephemeral=not a.no_ephemeral,
+                target=getattr(a, "target", None),
                 sao_url=a.sao_url,
             )
             emit(res, code=0 if res.get("ok") else 1)
@@ -2258,19 +2265,19 @@ def main():
         elif a.browser_action == "url":
             if not get_unified_browser_url:
                 fail("browser", "browser module not available")
-            res = get_unified_browser_url(sao_url=a.sao_url)
+            res = get_unified_browser_url(sao_url=a.sao_url, target=getattr(a, "target", "all"))
             emit(res, code=0 if res.get("ok") else 1)
             return
         elif a.browser_action == "takeover":
             if not takeover_browser:
                 fail("browser", "browser module not available")
-            res = takeover_browser(sao_url=a.sao_url)
+            res = takeover_browser(target=getattr(a, "target", None), sao_url=a.sao_url)
             emit(res, code=0 if res.get("ok") else 1)
             return
         elif a.browser_action == "resume":
             if not resume_browser:
                 fail("browser", "browser module not available")
-            res = resume_browser(sao_url=a.sao_url)
+            res = resume_browser(target=getattr(a, "target", None), sao_url=a.sao_url)
             emit(res, code=0 if res.get("ok") else 1)
             return
         elif a.browser_action == "act":

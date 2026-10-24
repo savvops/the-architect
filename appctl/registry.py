@@ -603,7 +603,12 @@ SEED_REGISTRY: List[Dict[str, Any]] = [
         "action": "browser_status",
         "inputs": {
             "type": "object",
-            "properties": {},
+            "properties": {
+                "target": {
+                    "type": "string",
+                    "description": "Optional target remote browser ('spine' or 'oracle')",
+                },
+            },
         },
         "expect": {"postconditions": ["browser_status_reported"]},
         "risk": "low",
@@ -631,9 +636,13 @@ SEED_REGISTRY: List[Dict[str, Any]] = [
                     "type": "boolean",
                     "description": "Prefer dedicated ephemeral worker to prevent owner viewport collision",
                 },
+                "target": {
+                    "type": "string",
+                    "description": "Target remote browser bridge ('spine' or 'oracle')",
+                },
                 "sao_url": {
                     "type": "string",
-                    "description": "Custom SAO Browser endpoint URL (default: savv-spine:6092)",
+                    "description": "Custom SAO/Oracle Browser endpoint URL",
                 },
             },
         },
@@ -647,9 +656,13 @@ SEED_REGISTRY: List[Dict[str, Any]] = [
         "inputs": {
             "type": "object",
             "properties": {
+                "target": {
+                    "type": "string",
+                    "description": "Target browser view ('all', 'spine', or 'oracle')",
+                },
                 "sao_url": {
                     "type": "string",
-                    "description": "Custom SAO Browser endpoint URL (default: savv-spine:6092)",
+                    "description": "Custom SAO/Oracle Browser endpoint URL",
                 },
             },
         },
@@ -663,9 +676,13 @@ SEED_REGISTRY: List[Dict[str, Any]] = [
         "inputs": {
             "type": "object",
             "properties": {
+                "target": {
+                    "type": "string",
+                    "description": "Target remote browser to pause ('spine' or 'oracle')",
+                },
                 "sao_url": {
                     "type": "string",
-                    "description": "Custom SAO Browser endpoint URL (default: savv-spine:6092)",
+                    "description": "Custom SAO/Oracle Browser endpoint URL",
                 },
             },
         },
@@ -679,9 +696,13 @@ SEED_REGISTRY: List[Dict[str, Any]] = [
         "inputs": {
             "type": "object",
             "properties": {
+                "target": {
+                    "type": "string",
+                    "description": "Target remote browser to resume ('spine' or 'oracle')",
+                },
                 "sao_url": {
                     "type": "string",
-                    "description": "Custom SAO Browser endpoint URL (default: savv-spine:6092)",
+                    "description": "Custom SAO/Oracle Browser endpoint URL",
                 },
             },
         },

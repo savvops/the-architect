@@ -25,6 +25,37 @@ IS_WINDOWS = sys.platform == "win32"
 BASE_WORKER_DIR = os.path.join(tempfile.gettempdir(), "architect_browser")
 REGISTRY_FILE = os.path.join(BASE_WORKER_DIR, "workers.json")
 SAO_BROWSER_URL = os.environ.get("SAO_BROWSER_URL", "https://savv-spine.taila7272b.ts.net:6092")
+SPINE_BROWSER_URL = os.environ.get("SPINE_BROWSER_URL", SAO_BROWSER_URL)
+ORACLE_BROWSER_URL = os.environ.get("ORACLE_BROWSER_URL", "https://01-savvopsvm.taila7272b.ts.net:6092")
+
+REMOTE_BROWSERS: Dict[str, Dict[str, Any]] = {
+    "spine": {
+        "name": "Spine Browser (SAO)",
+        "url": SPINE_BROWSER_URL,
+        "host": "savv-spine.taila7272b.ts.net",
+        "port": 6092,
+        "cdp_port": 9222,
+        "type": "webrtc-selkies",
+    },
+    "sao": {
+        "name": "Spine Browser (SAO)",
+        "url": SAO_BROWSER_URL,
+        "host": "savv-spine.taila7272b.ts.net",
+        "port": 6092,
+        "cdp_port": 9222,
+        "type": "webrtc-selkies",
+    },
+    "oracle": {
+        "name": "Oracle Browser",
+        "url": ORACLE_BROWSER_URL,
+        "host": "01-savvopsvm.taila7272b.ts.net",
+        "port": 6092,
+        "cdp_ip": "100.112.12.23",
+        "cdp_port": 9223,
+        "kasm_port": 8447,
+        "type": "webrtc-selkies",
+    },
+}
 
 
 def find_free_port(start_port: int = 9222, max_attempts: int = 100) -> int:
@@ -985,27 +1016,47 @@ def destroy_browser_worker(worker_id: str) -> Dict[str, Any]:
     }
 
 
-def browser_status() -> Dict[str, Any]:
-    """Inspect local browser readiness and SAO Browser bridge connectivity."""
+def browser_status(target: Optional[str] = None) -> Dict[str, Any]:
+    """Inspect local browser readiness and remote cloud browser connectivity (Spine & Oracle)."""
     detected = detect_browsers()
     workers_res = list_browser_workers()
     active_workers = workers_res.get("evidence", {}).get("workers", [])
 
-    # Check SAO remote endpoint
-    sao_status: Dict[str, Any] = {"available": False, "url": SAO_BROWSER_URL}
-    try:
-        req = urllib.request.Request(
-            f"{SAO_BROWSER_URL}/sao-control/status",
-            headers={"User-Agent": "Architect-appctl/0.6"}
-        )
-        import ssl
-        ctx = ssl._create_unverified_context()
-        with urllib.request.urlopen(req, timeout=3.0, context=ctx) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            sao_status["available"] = True
-            sao_status["state"] = data
-    except Exception as e:
-        sao_status["error"] = str(e)
+    import ssl
+    ctx = ssl._create_unverified_context()
+
+    targets_to_check = ["spine", "oracle"]
+    if target and target.lower() in REMOTE_BROWSERS:
+        t_key = "spine" if target.lower() == "sao" else target.lower()
+        targets_to_check = [t_key]
+
+    remote_statuses: Dict[str, Any] = {}
+    for t_name in ["spine", "oracle"]:
+        cfg = REMOTE_BROWSERS[t_name]
+        t_url = cfg["url"].rstrip("/")
+        st: Dict[str, Any] = {
+            "name": cfg["name"],
+            "url": t_url,
+            "available": False,
+        }
+        if "cdp_ip" in cfg:
+            st["cdp_endpoint"] = f"http://{cfg['cdp_ip']}:{cfg['cdp_port']}"
+        if t_name in targets_to_check:
+            try:
+                req = urllib.request.Request(
+                    f"{t_url}/sao-control/status",
+                    headers={"User-Agent": "Architect-appctl/0.6", "X-SAO-Browser": "1"}
+                )
+                with urllib.request.urlopen(req, timeout=3.0, context=ctx) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    st["available"] = True
+                    st["state"] = data
+            except Exception as e:
+                st["error"] = str(e)
+        remote_statuses[t_name] = st
+
+    active_target_key = "spine" if not target or target.lower() in ("spine", "sao") else target.lower()
+    sao_bridge = remote_statuses.get(active_target_key, remote_statuses["spine"])
 
     return {
         "ok": True,
@@ -1014,26 +1065,82 @@ def browser_status() -> Dict[str, Any]:
             "installed_browsers": detected,
             "active_workers_count": len(active_workers),
             "active_workers": active_workers,
-            "sao_bridge": sao_status,
+            "remote_browsers": remote_statuses,
+            "sao_bridge": sao_bridge,
         },
     }
 
 
-def get_unified_browser_url(sao_url: Optional[str] = None) -> Dict[str, Any]:
-    """Return the canonical unified browser URL and status for Master Control and agents."""
-    url = (sao_url or SAO_BROWSER_URL).rstrip("/")
+def get_unified_browser_url(sao_url: Optional[str] = None, target: str = "all") -> Dict[str, Any]:
+    """Return canonical unified browser URLs and status for Master Control, The Architect, and agents."""
     status = browser_status()
-    sao_state = status.get("evidence", {}).get("sao_bridge", {})
+    remote_map = status.get("evidence", {}).get("remote_browsers", {})
+    spine_info = remote_map.get("spine", {})
+    oracle_info = remote_map.get("oracle", {})
+
+    spine_url = (sao_url or spine_info.get("url") or REMOTE_BROWSERS["spine"]["url"]).rstrip("/")
+    oracle_url = (oracle_info.get("url") or REMOTE_BROWSERS["oracle"]["url"]).rstrip("/")
+
+    if target and target.lower() in ("oracle", "oracle-browser"):
+        return {
+            "ok": True,
+            "action": "browser.url",
+            "evidence": {
+                "target": "oracle",
+                "name": "Oracle Browser",
+                "unified_browser_url": f"{oracle_url}/",
+                "webrtc_stream_url": f"{oracle_url}/",
+                "kasm_web_url": "https://01-savvopsvm.taila7272b.ts.net:8447/",
+                "sao_control_status_url": f"{oracle_url}/sao-control/status",
+                "cdp_endpoint": "http://100.112.12.23:9223",
+                "cdp_version_url": "http://100.112.12.23:9223/json/version",
+                "bridge_connected": oracle_info.get("available", False),
+                "owner_state": oracle_info.get("state", {}),
+            },
+        }
+
+    if target and target.lower() in ("spine", "sao", "savv-spine"):
+        return {
+            "ok": True,
+            "action": "browser.url",
+            "evidence": {
+                "target": "spine",
+                "name": "Spine Browser (SAO)",
+                "unified_browser_url": f"{spine_url}/",
+                "webrtc_stream_url": f"{spine_url}/",
+                "sao_control_status_url": f"{spine_url}/sao-control/status",
+                "cdp_base_port": 9222,
+                "bridge_connected": spine_info.get("available", False),
+                "owner_state": spine_info.get("state", {}),
+            },
+        }
+
     return {
         "ok": True,
         "action": "browser.url",
         "evidence": {
-            "unified_browser_url": f"{url}/",
-            "webrtc_stream_url": f"{url}/",
-            "sao_control_status_url": f"{url}/sao-control/status",
+            "unified_browser_url": f"{spine_url}/",
+            "webrtc_stream_url": f"{spine_url}/",
+            "sao_control_status_url": f"{spine_url}/sao-control/status",
             "cdp_base_port": 9222,
-            "bridge_connected": sao_state.get("available", False),
-            "owner_state": sao_state.get("state", {}),
+            "bridge_connected": spine_info.get("available", False),
+            "owner_state": spine_info.get("state", {}),
+            "browsers": {
+                "spine": {
+                    "name": "Spine Browser (SAO)",
+                    "url": f"{spine_url}/",
+                    "status_url": f"{spine_url}/sao-control/status",
+                    "connected": spine_info.get("available", False),
+                },
+                "oracle": {
+                    "name": "Oracle Browser",
+                    "url": f"{oracle_url}/",
+                    "kasm_url": "https://01-savvopsvm.taila7272b.ts.net:8447/",
+                    "status_url": f"{oracle_url}/sao-control/status",
+                    "cdp_endpoint": "http://100.112.12.23:9223",
+                    "connected": oracle_info.get("available", False),
+                },
+            },
         },
     }
 
@@ -1194,10 +1301,15 @@ def bridge_browser(
     cookie_file: Optional[str] = None,
     headless: bool = True,
     prefer_ephemeral: bool = True,
+    target: Optional[str] = None,
     sao_url: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Bridge remote SAO Browser requests to Architect's ephemeral worker infrastructure."""
-    bridge = SAOBrowserBridge(sao_url=sao_url or SAO_BROWSER_URL)
+    """Bridge remote browser requests (Spine or Oracle) to Architect's ephemeral worker infrastructure."""
+    dest_url = sao_url
+    if not dest_url:
+        t_key = "oracle" if target and target.lower() in ("oracle", "oracle-browser") else "spine"
+        dest_url = REMOTE_BROWSERS[t_key]["url"]
+    bridge = SAOBrowserBridge(sao_url=dest_url)
     return bridge.route_request(
         url=url,
         cookie_file=cookie_file,
@@ -1206,15 +1318,23 @@ def bridge_browser(
     )
 
 
-def takeover_browser(sao_url: Optional[str] = None) -> Dict[str, Any]:
-    """Pause agents on SAO Browser for exclusive manual control."""
-    bridge = SAOBrowserBridge(sao_url=sao_url or SAO_BROWSER_URL)
+def takeover_browser(target: Optional[str] = None, sao_url: Optional[str] = None) -> Dict[str, Any]:
+    """Pause agents on remote browser (Spine or Oracle) for exclusive manual control."""
+    dest_url = sao_url
+    if not dest_url:
+        t_key = "oracle" if target and target.lower() in ("oracle", "oracle-browser") else "spine"
+        dest_url = REMOTE_BROWSERS[t_key]["url"]
+    bridge = SAOBrowserBridge(sao_url=dest_url)
     return bridge.takeover()
 
 
-def resume_browser(sao_url: Optional[str] = None) -> Dict[str, Any]:
-    """Resume agent access on SAO Browser."""
-    bridge = SAOBrowserBridge(sao_url=sao_url or SAO_BROWSER_URL)
+def resume_browser(target: Optional[str] = None, sao_url: Optional[str] = None) -> Dict[str, Any]:
+    """Resume agent access on remote browser (Spine or Oracle)."""
+    dest_url = sao_url
+    if not dest_url:
+        t_key = "oracle" if target and target.lower() in ("oracle", "oracle-browser") else "spine"
+        dest_url = REMOTE_BROWSERS[t_key]["url"]
+    bridge = SAOBrowserBridge(sao_url=dest_url)
     return bridge.resume()
 
 
@@ -1230,38 +1350,48 @@ def act_on_worker(
     y: Optional[int] = None,
     timeout: float = 10.0,
 ) -> Dict[str, Any]:
-    """Execute CDP browser action on a running ephemeral worker."""
-    workers = _load_workers()
-    worker = None
-    for w in workers:
-        if w.get("worker_id") == worker_id or str(w.get("pid")) == worker_id:
-            worker = w
-            break
+    """Execute CDP browser action on a running ephemeral worker or remote cloud browser (Oracle/Spine)."""
+    cdp_port = None
+    if worker_id.lower() in ("oracle", "oracle-browser"):
+        cdp_host = REMOTE_BROWSERS["oracle"]["cdp_ip"]
+        cdp_port = REMOTE_BROWSERS["oracle"]["cdp_port"]
+        client = CDPClient(host=cdp_host, port=cdp_port)
+    elif worker_id.lower() in ("spine", "sao", "savv-spine"):
+        cdp_host = REMOTE_BROWSERS["spine"]["host"]
+        cdp_port = REMOTE_BROWSERS["spine"]["cdp_port"]
+        client = CDPClient(host=cdp_host, port=cdp_port)
+    else:
+        workers = _load_workers()
+        worker = None
+        for w in workers:
+            if w.get("worker_id") == worker_id or str(w.get("pid")) == worker_id:
+                worker = w
+                break
 
-    if not worker:
-        return {
-            "ok": False,
-            "action": f"browser.act.{action}",
-            "error": f"Worker '{worker_id}' not found in registry",
-        }
+        if not worker:
+            return {
+                "ok": False,
+                "action": f"browser.act.{action}",
+                "error": f"Worker '{worker_id}' not found in registry",
+            }
 
-    pid = worker.get("pid", 0)
-    if not _is_pid_alive(pid):
-        return {
-            "ok": False,
-            "action": f"browser.act.{action}",
-            "error": f"Worker process PID {pid} is no longer running",
-        }
+        pid = worker.get("pid", 0)
+        if not _is_pid_alive(pid):
+            return {
+                "ok": False,
+                "action": f"browser.act.{action}",
+                "error": f"Worker process PID {pid} is no longer running",
+            }
 
-    cdp_port = worker.get("cdp_port")
-    if not cdp_port:
-        return {
-            "ok": False,
-            "action": f"browser.act.{action}",
-            "error": f"Worker '{worker_id}' does not have a CDP port configured",
-        }
+        cdp_port = worker.get("cdp_port")
+        if not cdp_port:
+            return {
+                "ok": False,
+                "action": f"browser.act.{action}",
+                "error": f"Worker '{worker_id}' does not have a CDP port configured",
+            }
 
-    client = CDPClient(port=cdp_port)
+        client = CDPClient(port=cdp_port)
 
     try:
         if action == "navigate":

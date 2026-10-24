@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -421,6 +422,7 @@ class TestCDPClientWebSocketHandling(unittest.TestCase):
                 # Now send the actual command response with id=1
                 reply = json.dumps({"id": 1, "result": {"cookiesSet": True}}).encode("utf-8")
                 conn.sendall(make_server_frame(0x1, reply))
+                time.sleep(0.05)
                 conn.close()
             finally:
                 server_sock.close()
@@ -543,6 +545,62 @@ class TestCDPClientPrimitives(unittest.TestCase):
         t_ract = registry.get("router.act")
         self.assertIsNotNone(t_ract)
         validate_schema({"task": "click Save button in notepad"}, t_ract["inputs"])
+
+
+    def test_remote_browsers_registry(self):
+        from appctl.browser import REMOTE_BROWSERS
+        self.assertIn("spine", REMOTE_BROWSERS)
+        self.assertIn("oracle", REMOTE_BROWSERS)
+        self.assertEqual(REMOTE_BROWSERS["spine"]["port"], 6092)
+        self.assertEqual(REMOTE_BROWSERS["oracle"]["port"], 6092)
+        self.assertEqual(REMOTE_BROWSERS["oracle"]["cdp_port"], 9223)
+        self.assertIn("01-savvopsvm", REMOTE_BROWSERS["oracle"]["url"])
+
+    def test_browser_status_target_oracle(self):
+        from unittest.mock import patch, MagicMock
+        from appctl.browser import browser_status
+
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps({"name": "Oracle Browser", "paused": False, "busy": False}).encode("utf-8")
+        mock_resp.__enter__.return_value = mock_resp
+
+        with patch("urllib.request.urlopen", return_value=mock_resp), \
+             patch("appctl.browser.list_browser_workers", return_value={"evidence": {"workers": []}}):
+            st = browser_status(target="oracle")
+            self.assertTrue(st["ok"])
+            ev = st["evidence"]
+            self.assertIn("remote_browsers", ev)
+            self.assertIn("oracle", ev["remote_browsers"])
+            self.assertTrue(ev["remote_browsers"]["oracle"]["available"])
+            self.assertEqual(ev["remote_browsers"]["oracle"]["name"], "Oracle Browser")
+
+    def test_get_unified_browser_url_target_oracle(self):
+        from unittest.mock import patch, MagicMock
+        from appctl.browser import get_unified_browser_url
+
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps({"name": "Oracle Browser", "paused": False}).encode("utf-8")
+        mock_resp.__enter__.return_value = mock_resp
+
+        with patch("urllib.request.urlopen", return_value=mock_resp), \
+             patch("appctl.browser.list_browser_workers", return_value={"evidence": {"workers": []}}):
+            res = get_unified_browser_url(target="oracle")
+            self.assertTrue(res["ok"])
+            ev = res["evidence"]
+            self.assertEqual(ev["target"], "oracle")
+            self.assertEqual(ev["name"], "Oracle Browser")
+            self.assertIn("01-savvopsvm", ev["unified_browser_url"])
+            self.assertEqual(ev["cdp_endpoint"], "http://100.112.12.23:9223")
+
+    def test_act_on_worker_oracle_remote(self):
+        from unittest.mock import patch
+        from appctl.browser import act_on_worker
+
+        with patch("appctl.browser.CDPClient.navigate", return_value={"ok": True, "action": "navigate", "url": "https://example.com"}):
+            res = act_on_worker("oracle", "navigate", url="https://example.com")
+            self.assertTrue(res["ok"])
+            self.assertEqual(res["worker_id"], "oracle")
+            self.assertEqual(res["cdp_port"], 9223)
 
 
 if __name__ == "__main__":
