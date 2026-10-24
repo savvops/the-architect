@@ -21,5 +21,8 @@ services:
       - ./profile:/data/profile
       - ./logs:/data/logs
       - ./downloads:/data/downloads
+      - ./ui:/app/ui:ro
+      - ./archd.py:/app/archd.py:ro
+      - ./router.py:/app/router.py:ro
     shm_size: 1gb
     restart: unless-stopped

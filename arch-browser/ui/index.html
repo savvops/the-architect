@@ -8,9 +8,9 @@
     :root {
       --bg: #090d16;
       --panel: #111827;
-      --card: #1f293d;
-      --border: rgba(255, 255, 255, 0.08);
-      --border-bright: rgba(255, 255, 255, 0.16);
+      --card: #1e293b;
+      --border: rgba(255, 255, 255, 0.09);
+      --border-bright: rgba(255, 255, 255, 0.18);
       --text: #f8fafc;
       --muted: #94a3b8;
       --accent: #38bdf8;
@@ -18,9 +18,8 @@
       --danger: #ef4444;
       --success: #22c55e;
       --warn: #f59e0b;
-      --glass: rgba(17, 24, 39, 0.82);
-      --glass-pill: rgba(30, 41, 59, 0.85);
-      --hud-accent: #60a5fa;
+      --glass: rgba(17, 24, 39, 0.85);
+      --glass-pill: rgba(30, 41, 59, 0.88);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); }
@@ -33,7 +32,7 @@
       padding: 6px 12px;
       display: flex;
       flex-wrap: nowrap;
-      gap: 10px;
+      gap: 8px;
       align-items: center;
       justify-content: space-between;
       z-index: 50;
@@ -42,9 +41,8 @@
     }
     .brand-group { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
     .brand-title { font-weight: 700; font-size: 14px; letter-spacing: -0.3px; color: #fff; display: flex; align-items: center; gap: 6px; }
-    .brand-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+    .brand-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); box-shadow: 0 0 8px var(--warn); }
     .brand-dot.connected { background: var(--success); box-shadow: 0 0 8px var(--success); }
-    .brand-dot.connecting { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
     .brand-dot.error { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
 
     .badge {
@@ -63,7 +61,7 @@
     .badge.agent { color: var(--accent); border-color: rgba(56, 189, 248, 0.4); background: rgba(56, 189, 248, 0.1); }
     .badge.lease { color: var(--warn); border-color: rgba(245, 158, 11, 0.4); background: rgba(245, 158, 11, 0.1); }
 
-    .nav-bar { display: flex; align-items: center; gap: 5px; flex: 1; max-width: 680px; min-width: 140px; margin: 0 4px; }
+    .nav-bar { display: flex; align-items: center; gap: 5px; flex: 1; max-width: 620px; min-width: 140px; margin: 0 4px; }
     .nav-btn {
       background: var(--card);
       border: 1px solid var(--border);
@@ -112,7 +110,7 @@
     .header-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
     .btn {
       height: 32px;
-      padding: 0 12px;
+      padding: 0 11px;
       border-radius: 8px;
       font-size: 12px;
       font-weight: 650;
@@ -125,14 +123,14 @@
       white-space: nowrap;
     }
     .btn:active { transform: scale(0.96); }
-    .btn-takeover { background: rgba(239, 68, 68, 0.2); color: #fca5a5; border-color: rgba(239, 68, 68, 0.4); }
-    .btn-takeover:hover { background: rgba(239, 68, 68, 0.35); }
+    .btn-takeover { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border-color: rgba(239, 68, 68, 0.4); }
+    .btn-takeover:hover { background: rgba(239, 68, 68, 0.3); }
     .btn-takeover.active { background: var(--danger); color: #fff; border-color: transparent; }
     .btn-secondary { background: var(--card); color: var(--text); border-color: var(--border); }
     .btn-secondary:hover { background: #2d3b55; }
     .btn-secondary.active { background: var(--accent); color: #000; border-color: var(--accent); }
 
-    /* --- Workspace Layout: Split Screen --- */
+    /* --- Workspace Layout: Muse-Style Split Screen --- */
     #workspace {
       display: flex;
       flex: 1;
@@ -160,31 +158,26 @@
       justify-content: center;
       position: relative;
       touch-action: none;
+      user-select: none;
     }
     #screenMount canvas {
       max-width: 100%;
       max-height: 100%;
-      box-shadow: 0 0 40px rgba(0,0,0,0.8);
+      box-shadow: 0 0 35px rgba(0,0,0,0.85);
       object-fit: contain;
-    }
-    #fallbackIframe {
-      width: 100%;
-      height: 100%;
-      border: none;
-      display: none;
     }
 
     /* Floating Virtual Remote Pointer Cursor */
     #remoteCursor {
       position: absolute;
-      width: 20px;
-      height: 26px;
+      width: 22px;
+      height: 28px;
       pointer-events: none;
       z-index: 35;
       transform: translate3d(-100px, -100px, 0);
-      transition: opacity 0.2s ease;
-      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.85));
+      filter: drop-shadow(0 2px 5px rgba(0,0,0,0.9));
       opacity: 0;
+      transition: opacity 0.2s;
     }
     #remoteCursor.visible { opacity: 1; }
     #remoteCursor svg { width: 100%; height: 100%; display: block; }
@@ -209,12 +202,12 @@
       position: absolute;
       left: max(16px, env(safe-area-inset-left));
       bottom: max(16px, env(safe-area-inset-bottom));
-      width: 110px;
-      height: 110px;
+      width: 116px;
+      height: 116px;
       border-radius: 50%;
-      background: rgba(15, 23, 42, 0.75);
+      background: rgba(15, 23, 42, 0.78);
       backdrop-filter: blur(14px);
-      border: 1.5px solid rgba(255, 255, 255, 0.15);
+      border: 1.5px solid rgba(255, 255, 255, 0.16);
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.65), inset 0 0 16px rgba(56, 189, 248, 0.08);
       pointer-events: auto;
       touch-action: none;
@@ -224,11 +217,11 @@
       user-select: none;
     }
     #joystickKnob {
-      width: 44px;
-      height: 44px;
+      width: 48px;
+      height: 48px;
       border-radius: 50%;
       background: radial-gradient(circle at 35% 35%, #60a5fa, #2563eb);
-      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.6), inset 0 2px 4px rgba(255, 255, 255, 0.4);
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.6), inset 0 2px 4px rgba(255, 255, 255, 0.45);
       border: 1px solid rgba(255, 255, 255, 0.3);
       position: absolute;
       transform: translate3d(0, 0, 0);
@@ -236,7 +229,7 @@
       transition: box-shadow 0.15s;
     }
     #joystickWrapper.active #joystickKnob {
-      box-shadow: 0 0 20px rgba(96, 165, 250, 0.9), inset 0 2px 5px rgba(255, 255, 255, 0.6);
+      box-shadow: 0 0 22px rgba(96, 165, 250, 0.95), inset 0 2px 5px rgba(255, 255, 255, 0.6);
     }
     .joystick-label {
       position: absolute;
@@ -245,20 +238,20 @@
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.8px;
-      color: rgba(255, 255, 255, 0.45);
+      color: rgba(255, 255, 255, 0.5);
       pointer-events: none;
     }
 
-    /* Scroll Wheel on Bottom-Right / Right Side */
+    /* Scroll Wheel on Right Side */
     #scrollCluster {
       position: absolute;
       right: max(16px, env(safe-area-inset-right));
       bottom: max(100px, env(safe-area-inset-bottom));
       width: 52px;
-      height: 140px;
-      background: rgba(15, 23, 42, 0.8);
+      height: 144px;
+      background: rgba(15, 23, 42, 0.82);
       backdrop-filter: blur(14px);
-      border: 1.5px solid rgba(255, 255, 255, 0.14);
+      border: 1.5px solid rgba(255, 255, 255, 0.16);
       border-radius: 26px;
       box-shadow: 0 8px 30px rgba(0, 0, 0, 0.65);
       pointer-events: auto;
@@ -274,8 +267,8 @@
       width: 40px;
       height: 28px;
       border-radius: 12px;
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.12);
       color: #cbd5e1;
       font-size: 11px;
       display: grid;
@@ -314,7 +307,7 @@
     .mouse-btn {
       height: 64px;
       border-radius: 18px;
-      background: rgba(15, 23, 42, 0.85);
+      background: rgba(15, 23, 42, 0.88);
       backdrop-filter: blur(14px);
       border: 1.5px solid rgba(255, 255, 255, 0.16);
       color: #fff;
@@ -337,8 +330,8 @@
       border-color: #fff;
       box-shadow: 0 0 20px var(--accent);
     }
-    #btnLeftClick { width: 84px; }
-    #btnRightClick { width: 62px; background: rgba(30, 41, 59, 0.75); }
+    #btnLeftClick { width: 86px; }
+    #btnRightClick { width: 64px; background: rgba(30, 41, 59, 0.8); }
 
     /* HUD Toggle Pill */
     #hudTogglePill {
@@ -363,9 +356,81 @@
     }
     #hudTogglePill:hover { background: rgba(56, 189, 248, 0.2); color: #fff; border-color: var(--accent); }
 
-    /* --- Right Pane: Agent Cockpit Drawer --- */
+    /* --- Keyboard Strip & Quick Bar --- */
+    #keyStripContainer {
+      position: absolute;
+      left: max(16px, env(safe-area-inset-left));
+      right: max(16px, env(safe-area-inset-right));
+      bottom: max(150px, env(safe-area-inset-bottom));
+      z-index: 45;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      pointer-events: none;
+      transition: opacity 0.25s, transform 0.25s;
+    }
+    #keyStripContainer.hidden {
+      opacity: 0;
+      transform: translateY(20px);
+      pointer-events: none !important;
+    }
+    .key-strip-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(15, 23, 42, 0.92);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--border-bright);
+      border-radius: 14px;
+      padding: 6px 8px;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.7);
+      pointer-events: auto;
+      overflow-x: auto;
+    }
+    .k-btn {
+      height: 34px;
+      min-width: 38px;
+      padding: 0 8px;
+      border-radius: 8px;
+      background: #1e293b;
+      border: 1px solid var(--border);
+      color: #fff;
+      font-size: 11.5px;
+      font-weight: 700;
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+    }
+    .k-btn:active { background: var(--accent); color: #000; }
+    .type-box {
+      flex: 1;
+      height: 34px;
+      min-width: 140px;
+      background: #0b1120;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: #fff;
+      font-size: 12px;
+      padding: 0 10px;
+      outline: none;
+    }
+    .type-box:focus { border-color: var(--accent); }
+
+    /* Off-screen textarea for mobile native keyboard invocation */
+    #mobileHiddenInput {
+      position: fixed;
+      left: 0;
+      top: -100px;
+      width: 20px;
+      height: 20px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    /* --- Right Pane: Agent Cockpit Drawer (MUSE-STYLE SIDEBAR) --- */
     #cockpitPane {
-      width: 420px;
+      width: 380px;
       background: var(--panel);
       border-left: 1px solid var(--border);
       display: flex;
@@ -375,8 +440,7 @@
       z-index: 45;
     }
     #cockpitPane.collapsed {
-      margin-right: -420px;
-      pointer-events: none;
+      margin-right: -380px;
     }
 
     /* Cockpit Tabs Header */
@@ -384,7 +448,8 @@
       display: flex;
       background: #0d121c;
       border-bottom: 1px solid var(--border);
-      padding: 0 8px;
+      padding: 0 6px;
+      flex-shrink: 0;
     }
     .cockpit-tab {
       flex: 1;
@@ -420,8 +485,8 @@
       padding: 12px;
     }
     .card-title {
-      font-size: 12px;
-      font-weight: 700;
+      font-size: 11.5px;
+      font-weight: 750;
       text-transform: uppercase;
       letter-spacing: 0.6px;
       color: var(--muted);
@@ -524,8 +589,8 @@
         top: 0;
         bottom: 0;
         width: 100%;
-        max-width: 380px;
-        box-shadow: -8px 0 32px rgba(0,0,0,0.8);
+        max-width: 360px;
+        box-shadow: -8px 0 32px rgba(0,0,0,0.85);
       }
     }
   </style>
@@ -536,7 +601,7 @@
   <header>
     <div class="brand-group">
       <div class="brand-title">
-        <span id="connDot" class="brand-dot connecting"></span>
+        <span id="connDot" class="brand-dot"></span>
         <span>Arch</span>
       </div>
       <span id="modeBadge" class="badge agent">Agents allowed</span>
@@ -557,20 +622,19 @@
     <!-- Header Actions -->
     <div class="header-actions">
       <button id="btnTakeover" class="btn btn-takeover" onclick="toggleTakeover()">Take over</button>
+      <button id="btnToggleKeyboard" class="btn btn-secondary" onclick="toggleKeyboard()" title="Show Keyboard">⌨️ Key</button>
       <button id="btnToggleHud" class="btn btn-secondary active" onclick="toggleHud()">🎮 Controls</button>
-      <button class="btn btn-secondary" onclick="captureScreenshot()" title="Screenshot">📷</button>
-      <button id="btnToggleCockpit" class="btn btn-secondary" onclick="toggleCockpit()">⚡ Cockpit</button>
+      <button id="btnToggleCockpit" class="btn btn-secondary active" onclick="toggleCockpit()">⚡ Sidebar</button>
     </div>
   </header>
 
-  <!-- Workspace: Live Desktop Viewport + Cockpit Drawer -->
+  <!-- Workspace: Split Screen -->
   <div id="workspace">
 
-    <!-- Viewport Container -->
+    <!-- Viewport Container (Left Side) -->
     <div id="viewportPane">
       <div id="screenMount">
-        <!-- Native noVNC canvas attaches here -->
-        <iframe id="fallbackIframe" title="Live desktop"></iframe>
+        <!-- Native noVNC canvas attaches directly here -->
       </div>
 
       <!-- Remote Pointer Cursor -->
@@ -579,6 +643,27 @@
           <path d="M2 1.5v20.3l5.1-4.3 3.8 8.8 4.2-1.8-3.8-8.7h7.1z" fill="#fff" stroke="#0b0f17" stroke-width="2" stroke-linejoin="round"/>
         </svg>
       </div>
+
+      <!-- Virtual Keyboard Input & Quick Key Strip -->
+      <div id="keyStripContainer" class="hidden">
+        <div class="key-strip-bar">
+          <input id="typeInput" class="type-box" placeholder="Type text and press Send..." onkeydown="if(event.key==='Enter')sendTypeBox()">
+          <button class="k-btn" onclick="sendTypeBox()" style="background:var(--accent);color:#000">Send</button>
+          <button class="k-btn" onclick="invokeNativeKeyboard()" title="Summon mobile touch keyboard">📱 Mobile</button>
+          <button class="k-btn" onclick="sendNamedKey('Escape', 0xff1b)">Esc</button>
+          <button class="k-btn" onclick="sendNamedKey('Tab', 0xff09)">Tab</button>
+          <button class="k-btn" onclick="sendNamedKey('Enter', 0xff0d)">Enter</button>
+          <button class="k-btn" onclick="sendNamedKey('Backspace', 0xff08)">⌫</button>
+          <button class="k-btn" onclick="sendNamedKey('ArrowUp', 0xff52)">▲</button>
+          <button class="k-btn" onclick="sendNamedKey('ArrowDown', 0xff54)">▼</button>
+          <button class="k-btn" onclick="sendNamedKey('ArrowLeft', 0xff51)">◀</button>
+          <button class="k-btn" onclick="sendNamedKey('ArrowRight', 0xff53)">▶</button>
+          <button class="k-btn" onclick="sendCtrl('c')">Ctrl+C</button>
+          <button class="k-btn" onclick="sendCtrl('v')">Ctrl+V</button>
+          <button class="k-btn" onclick="sendCtrl('a')">Ctrl+A</button>
+        </div>
+      </div>
+      <textarea id="mobileHiddenInput" autocapitalize="none" autocomplete="off" autocorrect="off" spellcheck="false" inputmode="text"></textarea>
 
       <!-- Floating Touch Controller HUD (Analog Stick, Scroll Wheel, Clicks) -->
       <div id="controlHud">
@@ -619,8 +704,8 @@
       </div>
     </div>
 
-    <!-- Cockpit Drawer (Muse style Agent Inspector) -->
-    <div id="cockpitPane" class="collapsed">
+    <!-- Cockpit Drawer (MUSE-STYLE SIDEBAR - OPEN BY DEFAULT) -->
+    <div id="cockpitPane">
       <div class="cockpit-tabs">
         <div class="cockpit-tab active" onclick="switchTab('tasks')">Tasks</div>
         <div class="cockpit-tab" onclick="switchTab('dom')">DOM</div>
@@ -633,7 +718,7 @@
         <div id="panelTasks" class="panel active">
           <div class="card">
             <div class="card-title">Autonomous Goal Loop</div>
-            <textarea id="taskGoal" class="task-input" placeholder="e.g. Find the top post on news.ycombinator.com and read its title"></textarea>
+            <textarea id="taskGoal" class="task-input" placeholder="e.g. Find the top post on news.ycombinator.com and click it"></textarea>
             <div class="task-actions">
               <span id="taskStatus" style="font-size:11.5px;color:var(--muted)">Ready</span>
               <button id="btnRunTask" class="task-run-btn" onclick="runTask()">Run Task</button>
@@ -696,9 +781,9 @@
 
   </div>
 
-  <!-- Unified Client Logic -->
+  <!-- Unified Script -->
   <script type="module">
-    // Token extraction (#token=... stored in localStorage and stripped)
+    // Extract token from #token=...
     const tokenMatch = location.hash.match(/token=([^&]+)/);
     if (tokenMatch) {
       localStorage.setItem('archToken', decodeURIComponent(tokenMatch[1]));
@@ -724,7 +809,6 @@
         return { ok: false, error: String(err) };
       }
     }
-
     window.apiPost = apiPost;
 
     // --- State & Coordinates ---
@@ -735,7 +819,7 @@
     let cursorX = 640, cursorY = 400;
     let domElementsCache = [];
 
-    // --- RFB WebSocket Connection (Native noVNC direct embed) ---
+    // --- RFB WebSocket Connection ---
     const screenMount = document.getElementById('screenMount');
     const connDot = document.getElementById('connDot');
     const remoteCursor = document.getElementById('remoteCursor');
@@ -746,37 +830,32 @@
 
       try {
         const { default: RFB } = await import('/novnc/core/rfb.js');
-        rfbClient = new RFB(screenMount, wsUrl, { credentials: { password: '' } });
+        rfbClient = new RFB(screenMount, wsUrl, {
+          credentials: { password: '' },
+          wsProtocols: ['binary']
+        });
         rfbClient.scaleViewport = true;
         rfbClient.resizeSession = false;
 
         rfbClient.addEventListener('connect', () => {
           connDot.className = 'brand-dot connected';
           remoteCursor.classList.add('visible');
-          updateCursorVisual();
           findCanvas();
+          updateCursorVisual();
         });
 
-        rfbClient.addEventListener('disconnect', (e) => {
+        rfbClient.addEventListener('disconnect', () => {
           connDot.className = 'brand-dot error';
           setTimeout(initVnc, 3000);
         });
 
-        rfbClient.addEventListener('capabilities', (e) => {
+        rfbClient.addEventListener('capabilities', () => {
           findCanvas();
         });
       } catch (err) {
-        console.warn('Native RFB module load failed; falling back to iframe mode', err);
-        mountFallbackIframe();
+        console.error('RFB initialization failed:', err);
+        connDot.className = 'brand-dot error';
       }
-    }
-
-    function mountFallbackIframe() {
-      const iframe = document.getElementById('fallbackIframe');
-      iframe.style.display = 'block';
-      iframe.src = `/novnc/vnc_lite.html?autoconnect=true&resize=scale&reconnect=true&path=websockify${token ? '&token=' + encodeURIComponent(token) : ''}`;
-      connDot.className = 'brand-dot connected';
-      remoteCursor.classList.add('visible');
     }
 
     function findCanvas() {
@@ -787,7 +866,7 @@
       }
     }
 
-    // --- Pointer & Virtual Cursor ---
+    // --- Pointer Positioning & Remote Cursor ---
     function updateCursorVisual() {
       if (!canvasEl) findCanvas();
       if (!canvasEl) return;
@@ -797,12 +876,33 @@
       remoteCursor.style.transform = `translate3d(${screenX}px, ${screenY}px, 0)`;
     }
 
-    function setCursorPosition(x, y, sendRfb = true) {
+    function sendRfbPointer(x, y, mask) {
+      if (rfbClient && typeof rfbClient._sendMouse === 'function') {
+        try {
+          rfbClient._sendMouse(x, y, mask);
+        } catch (_) {}
+      }
+    }
+
+    let moveApiThrottle = 0;
+    function setCursorPosition(x, y, sendPointer = true) {
       cursorX = Math.max(0, Math.min(desktopWidth - 1, Math.round(x)));
       cursorY = Math.max(0, Math.min(desktopHeight - 1, Math.round(y)));
       updateCursorVisual();
-      if (sendRfb && rfbClient) {
-        rfbClient.sendPointerEvent(cursorX, cursorY, 0);
+
+      if (sendPointer) {
+        sendRfbPointer(cursorX, cursorY, 0);
+
+        // Periodically sync with CDP in background
+        const now = Date.now();
+        if (now - moveApiThrottle > 250) {
+          moveApiThrottle = now;
+          fetch('/api/mouse/move', {
+            method: 'POST',
+            headers: apiHeaders(true),
+            body: JSON.stringify({ x: cursorX, y: cursorY })
+          }).catch(() => {});
+        }
       }
     }
 
@@ -819,7 +919,7 @@
     let joyStartX = 0, joyStartY = 0;
     let joyVx = 0, joyVy = 0;
     let joyAnimFrame = null;
-    const maxRadius = 40;
+    const maxRadius = 42;
 
     function handleJoyStart(clientX, clientY, id = null) {
       joystickActive = true;
@@ -829,7 +929,10 @@
       joyStartY = rect.top + rect.height / 2;
       joystickWrapper.classList.add('active');
       handleJoyMove(clientX, clientY);
-      if (!joyAnimFrame) joyAnimFrame = requestAnimationFrame(joyLoop);
+      if (!joyAnimFrame) {
+        lastLoopTime = performance.now();
+        joyAnimFrame = requestAnimationFrame(joyLoop);
+      }
     }
 
     function handleJoyMove(clientX, clientY) {
@@ -845,10 +948,10 @@
 
       joystickKnob.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
 
-      // Normalized magnitude with quadratic acceleration curve
       const norm = Math.min(1, dist / maxRadius);
       if (norm > 0.08) {
-        const speed = (60 + 580 * (norm * norm));
+        // Quadratic acceleration: slow micro-movements near center, rapid sweeps at edge
+        const speed = (70 + 640 * (norm * norm));
         joyVx = (dx / dist) * speed * norm;
         joyVy = (dy / dist) * speed * norm;
       } else {
@@ -909,7 +1012,7 @@
       }
     });
 
-    // Mouse events for Joystick (desktop testing)
+    // Mouse events for Joystick
     joystickWrapper.addEventListener('mousedown', (e) => {
       handleJoyStart(e.clientX, e.clientY);
       const onMove = (ev) => handleJoyMove(ev.clientX, ev.clientY);
@@ -930,9 +1033,9 @@
 
     function handleScrollMove(deltaY) {
       scrollAccum += deltaY;
-      if (Math.abs(scrollAccum) >= 18) {
+      if (Math.abs(scrollAccum) >= 16) {
         const dir = scrollAccum > 0 ? 'down' : 'up';
-        sendScroll(dir, 120);
+        sendScroll(dir, 140);
         scrollAccum = 0;
       }
     }
@@ -976,29 +1079,26 @@
 
     function sendScroll(direction, amount = 160) {
       if (navigator.vibrate) navigator.vibrate(6);
-      if (rfbClient) {
-        // mask 8 = wheel up, 16 = wheel down
-        const mask = direction === 'up' ? 8 : 16;
-        rfbClient.sendPointerEvent(cursorX, cursorY, mask);
-        setTimeout(() => rfbClient.sendPointerEvent(cursorX, cursorY, 0), 20);
-      } else {
-        apiPost('/api/scroll', { direction, amount });
-      }
+      const mask = direction === 'up' ? 8 : 16;
+      sendRfbPointer(cursorX, cursorY, mask);
+      setTimeout(() => sendRfbPointer(cursorX, cursorY, 0), 30);
+      apiPost('/api/scroll', { direction, amount });
     }
     window.sendScroll = sendScroll;
 
-    // --- Left & Right Click Cluster ---
+    // --- Left & Right Click Buttons (DUAL DISPATCH: RFB + CDP) ---
     const btnLeft = document.getElementById('btnLeftClick');
     const btnRight = document.getElementById('btnRightClick');
 
     function dispatchClick(buttonMask, apiBtnName) {
-      if (navigator.vibrate) navigator.vibrate(10);
-      if (rfbClient) {
-        rfbClient.sendPointerEvent(cursorX, cursorY, buttonMask);
-        setTimeout(() => rfbClient.sendPointerEvent(cursorX, cursorY, 0), 40);
-      } else {
-        apiPost('/api/mouse/click', { x: cursorX, y: cursorY, button: apiBtnName });
-      }
+      if (navigator.vibrate) navigator.vibrate(12);
+
+      // 1. Send native RFB pointer click to display server
+      sendRfbPointer(cursorX, cursorY, buttonMask);
+      setTimeout(() => sendRfbPointer(cursorX, cursorY, 0), 40);
+
+      // 2. Direct CDP synthetic input event into Chromium (guarantees click action)
+      apiPost('/api/mouse/click', { x: cursorX, y: cursorY, button: apiBtnName });
     }
 
     btnLeft.addEventListener('pointerdown', (e) => {
@@ -1014,6 +1114,80 @@
       e.preventDefault();
     });
     btnRight.addEventListener('pointerup', () => btnRight.classList.remove('active'));
+
+    // --- Keyboard System ---
+    const keyStripContainer = document.getElementById('keyStripContainer');
+    const btnToggleKeyboard = document.getElementById('btnToggleKeyboard');
+    const mobileHiddenInput = document.getElementById('mobileHiddenInput');
+    let keyboardOpen = false;
+
+    window.toggleKeyboard = function() {
+      keyboardOpen = !keyboardOpen;
+      keyStripContainer.classList.toggle('hidden', !keyboardOpen);
+      btnToggleKeyboard.classList.toggle('active', keyboardOpen);
+      if (keyboardOpen) {
+        document.getElementById('typeInput').focus();
+      }
+    };
+
+    window.invokeNativeKeyboard = function() {
+      mobileHiddenInput.focus();
+    };
+
+    mobileHiddenInput.addEventListener('input', (e) => {
+      const val = mobileHiddenInput.value;
+      if (val) {
+        sendKeyString(val);
+        mobileHiddenInput.value = '';
+      }
+    });
+
+    mobileHiddenInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Backspace') {
+        sendNamedKey('Backspace', 0xff08);
+      } else if (e.key === 'Enter') {
+        sendNamedKey('Enter', 0xff0d);
+      } else if (e.key === 'Tab') {
+        sendNamedKey('Tab', 0xff09);
+      } else if (e.key === 'Escape') {
+        sendNamedKey('Escape', 0xff1b);
+      }
+    });
+
+    window.sendTypeBox = function() {
+      const tb = document.getElementById('typeInput');
+      const val = tb.value;
+      if (val) {
+        sendKeyString(val);
+        tb.value = '';
+      }
+    };
+
+    function sendKeyString(str) {
+      if (rfbClient && typeof rfbClient.sendKey === 'function') {
+        for (let i = 0; i < str.length; i++) {
+          const code = str.charCodeAt(i);
+          rfbClient.sendKey(code, null, true);
+          rfbClient.sendKey(code, null, false);
+        }
+      }
+      apiPost('/api/type', { text: str });
+    }
+
+    function sendNamedKey(keyName, keysym) {
+      if (rfbClient && typeof rfbClient.sendKey === 'function') {
+        rfbClient.sendKey(keysym, keyName, true);
+        setTimeout(() => rfbClient.sendKey(keysym, keyName, false), 30);
+      }
+      apiPost('/api/press', { key: keyName });
+    }
+    window.sendNamedKey = sendNamedKey;
+
+    function sendCtrl(keyChar) {
+      const code = keyChar.toUpperCase();
+      apiPost('/api/press', { key: `Control+${code}` });
+    }
+    window.sendCtrl = sendCtrl;
 
     // --- HUD Visibility Toggle ---
     const controlHud = document.getElementById('controlHud');
@@ -1039,10 +1213,10 @@
       applyHudState();
     };
 
-    // --- Cockpit Drawer Toggle ---
+    // --- Cockpit Drawer Toggle (OPEN BY DEFAULT) ---
     const cockpitPane = document.getElementById('cockpitPane');
     const btnToggleCockpit = document.getElementById('btnToggleCockpit');
-    let cockpitOpen = localStorage.getItem('archCockpitOpen') === 'true';
+    let cockpitOpen = localStorage.getItem('archCockpitOpen') !== 'false'; // DEFAULT TRUE
 
     function applyCockpitState() {
       if (cockpitOpen) {
@@ -1063,7 +1237,7 @@
 
     // --- Cockpit Tabs ---
     window.switchTab = function(name) {
-      document.querySelectorAll('.cockpit-tab').forEach((t, i) => {
+      document.querySelectorAll('.cockpit-tab').forEach((t) => {
         const match = t.textContent.toLowerCase().includes(name);
         t.classList.toggle('active', match);
       });
@@ -1085,10 +1259,6 @@
       if (val) apiPost('/api/goto', { url: val });
     };
 
-    window.captureScreenshot = function() {
-      window.open('/api/screenshot' + (token ? '?token=' + encodeURIComponent(token) : ''), '_blank');
-    };
-
     // --- Status Refresh Loop ---
     async function refreshStatus() {
       try {
@@ -1101,7 +1271,7 @@
         const st = await res.json();
         isHuman = !!st.owner_takeover;
 
-        // Mode badge & toggle button
+        // Mode badge & button
         const mb = document.getElementById('modeBadge');
         mb.className = 'badge ' + (isHuman ? 'human' : 'agent');
         mb.textContent = isHuman ? 'Human Takeover' : 'Agents Allowed';
