@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple
 OPTION_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 URL_RE = re.compile(r"\b((?:https?://)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?:/[^\s'\"]*)?)", re.I)
 
-DEFAULT_TIER1 = "google/gemini-2.5-flash-lite,google/gemini-2.5-flash"
+DEFAULT_TIER1 = "gemini-3.5-flash-lite,gemini-3.8-flash,google/gemini-2.5-flash"
 DEFAULT_TIER2 = "deepseek/deepseek-chat"
 
 
@@ -56,6 +56,7 @@ class ModelRouter:
         self.jev_model = self.env.get("JEV_LOCAL_MODEL", "chaoliangUNSW/Jev-Style-Qwen3.5-2B-Decision-GGUF")
         self.jev_threshold = float(self.env.get("ARCH_JEV_CONFIDENCE", "0.70"))
         self.openrouter_key = self.env.get("OPENROUTER_API_KEY", "")
+        self.gemini_key = self.env.get("GEMINI_API_KEY") or self.env.get("GOOGLE_API_KEY", "")
         # Back-compat: single-model env vars still work.
         self.tier1_models = _split(self.env.get("ARCH_TIER1_MODELS") or self.env.get("ARCH_TIER1_MODEL") or DEFAULT_TIER1)
         self.tier2_models = _split(self.env.get("ARCH_TIER2_MODELS") or self.env.get("ARCH_TIER2_MODEL") or DEFAULT_TIER2)
@@ -63,7 +64,8 @@ class ModelRouter:
     def describe(self) -> Dict[str, Any]:
         return {"tier0": {"rules": True, "jev_url": self.jev_url, "jev_model": self.jev_model},
                 "tier1": self.tier1_models, "tier2": self.tier2_models,
-                "cloud_key_present": bool(self.openrouter_key)}
+                "gemini_key_present": bool(self.gemini_key),
+                "openrouter_key_present": bool(self.openrouter_key)}
 
     # ------------------------------------------------------------- Tier 0: Jev local
     def _call_jev_local(self, prompt: str, n_options: int) -> Tuple[str, float, int]:
@@ -104,6 +106,35 @@ class ModelRouter:
         return OPTION_LETTERS[best], probs[best]
 
     # ------------------------------------------------------------- Cloud
+    def _call_gemini_direct(self, model: str, system: str, user_content: str, max_tokens: int = 600) -> Tuple[str, Dict[str, Any], int]:
+        if not self.gemini_key:
+            raise RuntimeError("GEMINI_API_KEY is not set")
+        started = time.perf_counter()
+        payload = {
+            "model": model,
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user_content}],
+            "temperature": 0.1,
+            "max_tokens": max_tokens,
+            "response_format": {"type": "json_object"},
+        }
+        url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Authorization": f"Bearer {self.gemini_key}", "Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=45) as resp:
+                data = json.loads(resp.read())
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", "replace")[:200]
+            raise RuntimeError(f"HTTP {e.code} from Google Gemini direct ({model}): {detail}") from None
+        content = data["choices"][0]["message"]["content"] or ""
+        usage = data.get("usage", {})
+        usage["cost"] = 0.0  # Google AI Studio free tier
+        usage["provider"] = "google_direct"
+        return content, usage, round((time.perf_counter() - started) * 1000)
+
     def _call_openrouter(self, model: str, system: str, user_content: str, max_tokens: int = 600) -> Tuple[str, Dict[str, Any], int]:
         if not self.openrouter_key:
             raise RuntimeError("OPENROUTER_API_KEY is not set")
@@ -126,9 +157,17 @@ class ModelRouter:
                 data = json.loads(resp.read())
         except urllib.error.HTTPError as e:
             detail = e.read().decode("utf-8", "replace")[:200]
-            raise RuntimeError(f"HTTP {e.code} from {model}: {detail}") from None
+            raise RuntimeError(f"HTTP {e.code} from OpenRouter ({model}): {detail}") from None
         content = data["choices"][0]["message"]["content"] or ""
-        return content, data.get("usage", {}), round((time.perf_counter() - started) * 1000)
+        usage = data.get("usage", {})
+        usage["provider"] = "openrouter"
+        return content, usage, round((time.perf_counter() - started) * 1000)
+
+    def _call_cloud(self, model: str, system: str, user_content: str, max_tokens: int = 600) -> Tuple[str, Dict[str, Any], int]:
+        clean_model = model.replace("google/", "") if model.startswith("google/") else model
+        if ("gemini" in clean_model.lower()) and self.gemini_key:
+            return self._call_gemini_direct(clean_model, system, user_content, max_tokens)
+        return self._call_openrouter(model, system, user_content, max_tokens)
 
     @staticmethod
     def parse_json(raw: str) -> Dict[str, Any]:
@@ -151,11 +190,12 @@ class ModelRouter:
         for tier_name, models in tiers:
             for model in models:
                 try:
-                    raw, usage, latency = self._call_openrouter(model, system, user, max_tokens)
+                    raw, usage, latency = self._call_cloud(model, system, user, max_tokens)
                     parsed = self.parse_json(raw)
                     ok, why = validate(parsed)
-                    attempts.append({"tier": tier_name, "model": model, "latency_ms": latency,
-                                     "cost": usage.get("cost"), "status": "ok" if ok else f"rejected: {why}"})
+                    attempts.append({"tier": tier_name, "model": model, "provider": usage.get("provider"),
+                                     "latency_ms": latency, "cost": usage.get("cost"),
+                                     "status": "ok" if ok else f"rejected: {why}"})
                     if ok:
                         parsed.update({"tier": tier_name, "model": model, "latency_ms": latency, "usage": usage})
                         return parsed

@@ -187,6 +187,19 @@ class RouterTests(unittest.TestCase):
         self.assertEqual(ModelRouter.parse_json('```json\n{"a": 1}\n```'), {"a": 1})
         self.assertEqual(ModelRouter.parse_json('Sure: {"a": 2} done'), {"a": 2})
 
+    def test_gemini_direct_routing(self):
+        r = ModelRouter(env={"GEMINI_API_KEY": "test-key", "ARCH_TIER1_MODELS": "gemini-3.5-flash-lite"})
+        called = []
+        def fake_gemini(model, system, user, max_tokens=600):
+            called.append(model)
+            return '{"action": "done", "summary": "ok"}', {"provider": "google_direct", "cost": 0.0}, 10
+        r._call_gemini_direct = fake_gemini
+        plan = r.plan_next_action("do task", "https://x.test", "", [], [{"step": 1}])
+        self.assertEqual(plan["action"], "done")
+        self.assertEqual(called, ["gemini-3.5-flash-lite"])
+        self.assertEqual(plan["usage"]["provider"], "google_direct")
+        self.assertEqual(plan["usage"]["cost"], 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()
