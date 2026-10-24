@@ -2,93 +2,1262 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Arch Browser — The Architect</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Arch Browser — Cockpit & Live Desktop</title>
   <style>
-    :root { --bg:#0f172a; --card:#1e293b; --border:#334155; --text:#f8fafc; --muted:#94a3b8; --accent:#38bdf8; --danger:#ef4444; --success:#22c55e; --warn:#f59e0b; }
-    * { box-sizing:border-box; margin:0; padding:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
-    body { background:var(--bg); color:var(--text); height:100vh; display:flex; flex-direction:column; overflow:hidden; }
-    header { background:var(--card); border-bottom:1px solid var(--border); padding:8px 12px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between; }
-    .row { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
-    .badge { padding:3px 8px; border-radius:12px; font-size:11px; font-weight:600; text-transform:uppercase; border:1px solid var(--border); color:var(--muted); }
-    .human { color:var(--success); border-color:var(--success); }
-    .agent { color:var(--accent); border-color:var(--accent); }
-    .lease { color:var(--warn); border-color:var(--warn); }
-    .err { color:var(--danger); border-color:var(--danger); }
-    .btn { padding:6px 12px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; border:none; }
-    .btn-takeover { background:var(--danger); color:#fff; }
-    .btn-allow { background:var(--accent); color:#000; }
-    .btn-ghost { background:transparent; color:var(--text); border:1px solid var(--border); }
-    .nav { display:flex; gap:6px; flex:1; min-width:220px; max-width:560px; }
-    .nav input { flex:1; background:#0b1120; border:1px solid var(--border); color:#fff; padding:6px 10px; border-radius:6px; font-size:13px; }
-    .viewport { flex:1; background:#000; }
-    iframe { width:100%; height:100%; border:none; }
+    :root {
+      --bg: #090d16;
+      --panel: #111827;
+      --card: #1f293d;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-bright: rgba(255, 255, 255, 0.16);
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-glow: rgba(56, 189, 248, 0.35);
+      --danger: #ef4444;
+      --success: #22c55e;
+      --warn: #f59e0b;
+      --glass: rgba(17, 24, 39, 0.82);
+      --glass-pill: rgba(30, 41, 59, 0.85);
+      --hud-accent: #60a5fa;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); }
+    body { display: flex; flex-direction: column; }
+
+    /* --- Top Navigation Header --- */
+    header {
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      padding: 6px 12px;
+      display: flex;
+      flex-wrap: nowrap;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      z-index: 50;
+      flex-shrink: 0;
+      height: 48px;
+    }
+    .brand-group { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .brand-title { font-weight: 700; font-size: 14px; letter-spacing: -0.3px; color: #fff; display: flex; align-items: center; gap: 6px; }
+    .brand-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+    .brand-dot.connected { background: var(--success); box-shadow: 0 0 8px var(--success); }
+    .brand-dot.connecting { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+    .brand-dot.error { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
+
+    .badge {
+      padding: 2px 7px;
+      border-radius: 999px;
+      font-size: 10.5px;
+      font-weight: 650;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .badge.human { color: var(--danger); border-color: rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.1); }
+    .badge.agent { color: var(--accent); border-color: rgba(56, 189, 248, 0.4); background: rgba(56, 189, 248, 0.1); }
+    .badge.lease { color: var(--warn); border-color: rgba(245, 158, 11, 0.4); background: rgba(245, 158, 11, 0.1); }
+
+    .nav-bar { display: flex; align-items: center; gap: 5px; flex: 1; max-width: 680px; min-width: 140px; margin: 0 4px; }
+    .nav-btn {
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      font-size: 13px;
+      transition: background 0.15s, border-color 0.15s;
+      flex-shrink: 0;
+    }
+    .nav-btn:hover { background: #2d3b55; border-color: var(--border-bright); }
+    .nav-btn:active { transform: scale(0.96); }
+
+    .url-input-wrap { position: relative; flex: 1; display: flex; align-items: center; }
+    .url-input {
+      width: 100%;
+      height: 32px;
+      background: #090e17;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: #fff;
+      font-size: 12.5px;
+      padding: 0 65px 0 10px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .url-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+    .url-go {
+      position: absolute;
+      right: 3px;
+      height: 26px;
+      padding: 0 10px;
+      background: var(--accent);
+      color: #000;
+      border: none;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 11px;
+      cursor: pointer;
+    }
+
+    .header-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+    .btn {
+      height: 32px;
+      padding: 0 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 650;
+      cursor: pointer;
+      border: 1px solid transparent;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.18s ease;
+      white-space: nowrap;
+    }
+    .btn:active { transform: scale(0.96); }
+    .btn-takeover { background: rgba(239, 68, 68, 0.2); color: #fca5a5; border-color: rgba(239, 68, 68, 0.4); }
+    .btn-takeover:hover { background: rgba(239, 68, 68, 0.35); }
+    .btn-takeover.active { background: var(--danger); color: #fff; border-color: transparent; }
+    .btn-secondary { background: var(--card); color: var(--text); border-color: var(--border); }
+    .btn-secondary:hover { background: #2d3b55; }
+    .btn-secondary.active { background: var(--accent); color: #000; border-color: var(--accent); }
+
+    /* --- Workspace Layout: Split Screen --- */
+    #workspace {
+      display: flex;
+      flex: 1;
+      height: calc(100vh - 48px);
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Left Pane: Viewport Canvas */
+    #viewportPane {
+      flex: 1;
+      position: relative;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      min-width: 0;
+    }
+    #screenMount {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      touch-action: none;
+    }
+    #screenMount canvas {
+      max-width: 100%;
+      max-height: 100%;
+      box-shadow: 0 0 40px rgba(0,0,0,0.8);
+      object-fit: contain;
+    }
+    #fallbackIframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      display: none;
+    }
+
+    /* Floating Virtual Remote Pointer Cursor */
+    #remoteCursor {
+      position: absolute;
+      width: 20px;
+      height: 26px;
+      pointer-events: none;
+      z-index: 35;
+      transform: translate3d(-100px, -100px, 0);
+      transition: opacity 0.2s ease;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.85));
+      opacity: 0;
+    }
+    #remoteCursor.visible { opacity: 1; }
+    #remoteCursor svg { width: 100%; height: 100%; display: block; }
+
+    /* --- Floating Mobile Touch Controls HUD --- */
+    #controlHud {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 40;
+      transition: opacity 0.25s ease, transform 0.25s ease;
+      overflow: hidden;
+    }
+    #controlHud.hidden {
+      opacity: 0;
+      transform: scale(0.97);
+      pointer-events: none !important;
+    }
+
+    /* Analog Joystick on Bottom-Left */
+    #joystickWrapper {
+      position: absolute;
+      left: max(16px, env(safe-area-inset-left));
+      bottom: max(16px, env(safe-area-inset-bottom));
+      width: 110px;
+      height: 110px;
+      border-radius: 50%;
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(14px);
+      border: 1.5px solid rgba(255, 255, 255, 0.15);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.65), inset 0 0 16px rgba(56, 189, 248, 0.08);
+      pointer-events: auto;
+      touch-action: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+    }
+    #joystickKnob {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #60a5fa, #2563eb);
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.6), inset 0 2px 4px rgba(255, 255, 255, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      position: absolute;
+      transform: translate3d(0, 0, 0);
+      pointer-events: none;
+      transition: box-shadow 0.15s;
+    }
+    #joystickWrapper.active #joystickKnob {
+      box-shadow: 0 0 20px rgba(96, 165, 250, 0.9), inset 0 2px 5px rgba(255, 255, 255, 0.6);
+    }
+    .joystick-label {
+      position: absolute;
+      bottom: -18px;
+      font-size: 9.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: rgba(255, 255, 255, 0.45);
+      pointer-events: none;
+    }
+
+    /* Scroll Wheel on Bottom-Right / Right Side */
+    #scrollCluster {
+      position: absolute;
+      right: max(16px, env(safe-area-inset-right));
+      bottom: max(100px, env(safe-area-inset-bottom));
+      width: 52px;
+      height: 140px;
+      background: rgba(15, 23, 42, 0.8);
+      backdrop-filter: blur(14px);
+      border: 1.5px solid rgba(255, 255, 255, 0.14);
+      border-radius: 26px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.65);
+      pointer-events: auto;
+      touch-action: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 0;
+      user-select: none;
+    }
+    .scroll-arrow-btn {
+      width: 40px;
+      height: 28px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #cbd5e1;
+      font-size: 11px;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+    }
+    .scroll-arrow-btn:active { background: var(--accent); color: #000; }
+    #scrollTrack {
+      flex: 1;
+      width: 36px;
+      margin: 4px 0;
+      border-radius: 10px;
+      background: rgba(0, 0, 0, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      cursor: ns-resize;
+      touch-action: none;
+    }
+    .wheel-ridge { width: 18px; height: 2px; border-radius: 1px; background: rgba(255, 255, 255, 0.25); }
+    #scrollTrack.active .wheel-ridge { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+
+    /* Left & Right Click Buttons */
+    #clickCluster {
+      position: absolute;
+      right: max(16px, env(safe-area-inset-right));
+      bottom: max(16px, env(safe-area-inset-bottom));
+      display: flex;
+      gap: 8px;
+      pointer-events: auto;
+      user-select: none;
+    }
+    .mouse-btn {
+      height: 64px;
+      border-radius: 18px;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(14px);
+      border: 1.5px solid rgba(255, 255, 255, 0.16);
+      color: #fff;
+      font-size: 11.5px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.65);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      transition: transform 0.1s, background 0.1s;
+    }
+    .mouse-btn:active, .mouse-btn.active {
+      transform: scale(0.92);
+      background: var(--accent);
+      color: #000;
+      border-color: #fff;
+      box-shadow: 0 0 20px var(--accent);
+    }
+    #btnLeftClick { width: 84px; }
+    #btnRightClick { width: 62px; background: rgba(30, 41, 59, 0.75); }
+
+    /* HUD Toggle Pill */
+    #hudTogglePill {
+      position: absolute;
+      left: max(16px, env(safe-area-inset-left));
+      top: max(16px, env(safe-area-inset-top));
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: var(--glass-pill);
+      backdrop-filter: blur(14px);
+      border: 1px solid var(--border-bright);
+      color: #cbd5e1;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+      pointer-events: auto;
+      transition: all 0.2s;
+    }
+    #hudTogglePill:hover { background: rgba(56, 189, 248, 0.2); color: #fff; border-color: var(--accent); }
+
+    /* --- Right Pane: Agent Cockpit Drawer --- */
+    #cockpitPane {
+      width: 420px;
+      background: var(--panel);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      transition: margin-right 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 45;
+    }
+    #cockpitPane.collapsed {
+      margin-right: -420px;
+      pointer-events: none;
+    }
+
+    /* Cockpit Tabs Header */
+    .cockpit-tabs {
+      display: flex;
+      background: #0d121c;
+      border-bottom: 1px solid var(--border);
+      padding: 0 8px;
+    }
+    .cockpit-tab {
+      flex: 1;
+      text-align: center;
+      padding: 10px 4px;
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.18s;
+      white-space: nowrap;
+    }
+    .cockpit-tab:hover { color: #fff; }
+    .cockpit-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    .cockpit-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .panel { display: none; flex-direction: column; gap: 12px; }
+    .panel.active { display: flex; }
+
+    /* Section Cards */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+    }
+    .card-title {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--muted);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    /* Task Runner */
+    .task-input {
+      width: 100%;
+      height: 70px;
+      background: #0b1120;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: #fff;
+      font-size: 12.5px;
+      padding: 8px 10px;
+      resize: none;
+      outline: none;
+      margin-bottom: 8px;
+    }
+    .task-input:focus { border-color: var(--accent); }
+    .task-actions { display: flex; justify-content: space-between; align-items: center; }
+    .task-run-btn {
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      color: #fff;
+      border: none;
+      padding: 7px 16px;
+      border-radius: 7px;
+      font-size: 12.5px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .task-run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .step-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+    .step-item {
+      background: #0f172a;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 11.5px;
+    }
+    .step-item-head { display: flex; justify-content: space-between; font-weight: 700; margin-bottom: 4px; }
+    .step-item-thought { color: #94a3b8; line-height: 1.35; margin-bottom: 4px; }
+    .step-meta { display: flex; gap: 8px; color: var(--accent); font-size: 10.5px; }
+
+    /* DOM Tree */
+    .dom-search {
+      width: 100%;
+      height: 30px;
+      background: #0b1120;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: #fff;
+      font-size: 12px;
+      padding: 0 8px;
+      margin-bottom: 8px;
+      outline: none;
+    }
+    .dom-list { display: flex; flex-direction: column; gap: 4px; max-height: 480px; overflow-y: auto; }
+    .dom-node {
+      background: #0f172a;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 11px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .dom-node-left { display: flex; align-items: center; gap: 6px; overflow: hidden; }
+    .dom-index { background: var(--card); padding: 1px 5px; border-radius: 4px; font-weight: 700; color: var(--accent); flex-shrink: 0; }
+    .dom-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #e2e8f0; }
+    .dom-btn { background: #1e293b; border: 1px solid var(--border); color: #cbd5e1; padding: 2px 7px; border-radius: 4px; font-size: 10px; cursor: pointer; }
+    .dom-btn:hover { background: var(--accent); color: #000; }
+
+    /* Tabs list */
+    .tab-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #0f172a;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .tab-row.active { border-color: var(--accent); background: rgba(56, 189, 248, 0.08); }
+
+    /* Responsive */
+    @media (max-width: 820px) {
+      #cockpitPane {
+        position: absolute;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        width: 100%;
+        max-width: 380px;
+        box-shadow: -8px 0 32px rgba(0,0,0,0.8);
+      }
+    }
   </style>
 </head>
 <body>
+
+  <!-- Top Navigation Header -->
   <header>
-    <div class="row">
-      <strong>Arch Browser</strong>
-      <span id="mode" class="badge agent">Agents allowed</span>
-      <span id="lease" class="badge" hidden></span>
-      <span id="dialog" class="badge err" hidden></span>
+    <div class="brand-group">
+      <div class="brand-title">
+        <span id="connDot" class="brand-dot connecting"></span>
+        <span>Arch</span>
+      </div>
+      <span id="modeBadge" class="badge agent">Agents allowed</span>
+      <span id="leaseBadge" class="badge lease" style="display:none"></span>
     </div>
-    <div class="nav">
-      <button class="btn btn-ghost" onclick="post('/api/back')">&#8592;</button>
-      <input id="url" placeholder="https://..." onkeydown="if(event.key==='Enter')go()">
-      <button class="btn btn-allow" onclick="go()">Go</button>
+
+    <!-- Navigation Bar -->
+    <div class="nav-bar">
+      <button class="nav-btn" title="Back" onclick="apiPost('/api/back')">&#8592;</button>
+      <button class="nav-btn" title="Forward" onclick="apiPost('/api/forward')">&#8594;</button>
+      <button class="nav-btn" title="Reload" onclick="apiPost('/api/eval', {js: 'location.reload()'})">&#8635;</button>
+      <div class="url-input-wrap">
+        <input id="urlInput" class="url-input" placeholder="https://..." onkeydown="if(event.key==='Enter')navigateUrl()">
+        <button class="url-go" onclick="navigateUrl()">Go</button>
+      </div>
     </div>
-    <div class="row">
-      <button id="toggle" class="btn btn-takeover" onclick="toggle()">Take over</button>
+
+    <!-- Header Actions -->
+    <div class="header-actions">
+      <button id="btnTakeover" class="btn btn-takeover" onclick="toggleTakeover()">Take over</button>
+      <button id="btnToggleHud" class="btn btn-secondary active" onclick="toggleHud()">🎮 Controls</button>
+      <button class="btn btn-secondary" onclick="captureScreenshot()" title="Screenshot">📷</button>
+      <button id="btnToggleCockpit" class="btn btn-secondary" onclick="toggleCockpit()">⚡ Cockpit</button>
     </div>
   </header>
-  <div class="viewport"><iframe id="vnc" title="Arch Browser desktop"></iframe></div>
-  <script>
-    // Token: open the dashboard once as  ...:8447/#token=XYZ  -> stored locally, stripped from the URL.
-    const m = location.hash.match(/token=([^&]+)/);
-    if (m) { localStorage.setItem('archToken', decodeURIComponent(m[1])); history.replaceState(null, '', location.pathname); }
+
+  <!-- Workspace: Live Desktop Viewport + Cockpit Drawer -->
+  <div id="workspace">
+
+    <!-- Viewport Container -->
+    <div id="viewportPane">
+      <div id="screenMount">
+        <!-- Native noVNC canvas attaches here -->
+        <iframe id="fallbackIframe" title="Live desktop"></iframe>
+      </div>
+
+      <!-- Remote Pointer Cursor -->
+      <div id="remoteCursor">
+        <svg viewBox="0 0 22 28" focusable="false">
+          <path d="M2 1.5v20.3l5.1-4.3 3.8 8.8 4.2-1.8-3.8-8.7h7.1z" fill="#fff" stroke="#0b0f17" stroke-width="2" stroke-linejoin="round"/>
+        </svg>
+      </div>
+
+      <!-- Floating Touch Controller HUD (Analog Stick, Scroll Wheel, Clicks) -->
+      <div id="controlHud">
+        <!-- HUD Quick Toggle Pill -->
+        <div id="hudTogglePill" onclick="toggleHud()">
+          <span>🎮</span><span id="hudPillText">Hide Controls</span>
+        </div>
+
+        <!-- Analog Joystick (Pointer Mover) -->
+        <div id="joystickWrapper" aria-label="Analog stick pointer">
+          <div id="joystickKnob"></div>
+          <span class="joystick-label">Move</span>
+        </div>
+
+        <!-- Tactile Scroll Wheel Strip -->
+        <div id="scrollCluster" aria-label="Scroll wheel">
+          <button class="scroll-arrow-btn" onclick="sendScroll('up', 180)">▲</button>
+          <div id="scrollTrack">
+            <div class="wheel-ridge"></div>
+            <div class="wheel-ridge"></div>
+            <div class="wheel-ridge"></div>
+            <div class="wheel-ridge"></div>
+          </div>
+          <button class="scroll-arrow-btn" onclick="sendScroll('down', 180)">▼</button>
+        </div>
+
+        <!-- Left & Right Click Cluster -->
+        <div id="clickCluster">
+          <button id="btnLeftClick" class="mouse-btn" type="button" aria-label="Left click">
+            <span>L-CLICK</span>
+            <small style="font-size:9px;opacity:0.7">Primary</small>
+          </button>
+          <button id="btnRightClick" class="mouse-btn" type="button" aria-label="Right click">
+            <span>RIGHT</span>
+            <small style="font-size:9px;opacity:0.7">Context</small>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cockpit Drawer (Muse style Agent Inspector) -->
+    <div id="cockpitPane" class="collapsed">
+      <div class="cockpit-tabs">
+        <div class="cockpit-tab active" onclick="switchTab('tasks')">Tasks</div>
+        <div class="cockpit-tab" onclick="switchTab('dom')">DOM</div>
+        <div class="cockpit-tab" onclick="switchTab('tabs')">Tabs</div>
+        <div class="cockpit-tab" onclick="switchTab('tiers')">Router</div>
+      </div>
+
+      <div class="cockpit-body">
+        <!-- Tasks Panel -->
+        <div id="panelTasks" class="panel active">
+          <div class="card">
+            <div class="card-title">Autonomous Goal Loop</div>
+            <textarea id="taskGoal" class="task-input" placeholder="e.g. Find the top post on news.ycombinator.com and read its title"></textarea>
+            <div class="task-actions">
+              <span id="taskStatus" style="font-size:11.5px;color:var(--muted)">Ready</span>
+              <button id="btnRunTask" class="task-run-btn" onclick="runTask()">Run Task</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Execution Steps <span id="stepCountBadge" class="badge">0</span></div>
+            <div id="taskStepList" class="step-list">
+              <p style="font-size:11.5px;color:var(--muted)">No active task steps yet.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- DOM Tree Panel -->
+        <div id="panelDom" class="panel">
+          <div class="card">
+            <div class="card-title">
+              <span>Interactive Elements (<span id="domCount">0</span>)</span>
+              <button class="btn btn-secondary" style="height:24px;font-size:11px;padding:0 8px" onclick="refreshDom()">Refresh</button>
+            </div>
+            <input id="domSearch" class="dom-search" placeholder="Filter by tag, role, or name..." oninput="filterDom()">
+            <div id="domList" class="dom-list">
+              <p style="font-size:11.5px;color:var(--muted)">Loading interactive DOM...</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tabs Panel -->
+        <div id="panelTabs" class="panel">
+          <div class="card">
+            <div class="card-title">
+              <span>Browser Tabs</span>
+              <button class="btn btn-secondary" style="height:24px;font-size:11px;padding:0 8px" onclick="newTab()">+ New Tab</button>
+            </div>
+            <div id="tabsList" style="display:flex;flex-direction:column;gap:6px">
+              <p style="font-size:11.5px;color:var(--muted)">Loading tabs...</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Router & Tiers Panel -->
+        <div id="panelRouter" class="panel">
+          <div class="card">
+            <div class="card-title">Model Escalation Policy</div>
+            <div style="font-size:12px;line-height:1.6;color:#cbd5e1">
+              <p><strong>Tier 0:</strong> Local Rules + Jev Qwen 2B ($0, on-box)</p>
+              <p><strong>Tier 1:</strong> Google Gemini 3.5 Flash Lite ($0 direct free tier)</p>
+              <p><strong>Tier 2:</strong> DeepSeek Chat (capable reasoning fallback)</p>
+              <p><strong>Tier 3:</strong> Owner Takeover Request</p>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Status Readout</div>
+            <pre id="routerStatusPre" style="font-size:11px;color:var(--accent);overflow-x:auto">Loading router...</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Unified Client Logic -->
+  <script type="module">
+    // Token extraction (#token=... stored in localStorage and stripped)
+    const tokenMatch = location.hash.match(/token=([^&]+)/);
+    if (tokenMatch) {
+      localStorage.setItem('archToken', decodeURIComponent(tokenMatch[1]));
+      history.replaceState(null, '', location.pathname);
+    }
     const token = localStorage.getItem('archToken') || '';
-    const headers = (json) => Object.assign(
-      {'X-Arch-Actor': 'owner'},             // the dashboard is the owner's console
-      token ? {'Authorization': 'Bearer ' + token} : {},
-      json ? {'Content-Type': 'application/json'} : {});
 
-    // noVNC is a separate origin: Tailscale Serve :8447 -> :6092, loopback :8901 -> :6080.
-    const params = new URLSearchParams(location.search);
-    const vncPort = params.get('vnc_port') || (location.port === '8447' ? '6092' : '6080');
-    document.getElementById('vnc').src =
-      `${location.protocol}//${location.hostname}:${vncPort}/vnc.html?autoconnect=true&resize=scale&reconnect=true`;
-
-    let isHuman = false;
-    async function post(path, body) {
-      const r = await fetch(path, {method: 'POST', headers: headers(true), body: JSON.stringify(body || {})});
-      const data = await r.json().catch(() => ({}));
-      refresh();
-      return data;
+    function apiHeaders(isJson = true) {
+      const h = { 'X-Arch-Actor': 'owner' };
+      if (token) h['Authorization'] = 'Bearer ' + token;
+      if (isJson) h['Content-Type'] = 'application/json';
+      return h;
     }
-    async function refresh() {
-      const mode = document.getElementById('mode');
+
+    async function apiPost(path, body = {}) {
       try {
-        const r = await fetch('/api/status', {headers: headers(false)});
-        if (r.status === 401) { mode.className = 'badge err'; mode.textContent = 'Token needed (#token=...)'; return; }
-        const d = await r.json();
-        isHuman = !!d.owner_takeover;
-        mode.className = 'badge ' + (isHuman ? 'human' : 'agent');
-        mode.textContent = isHuman ? 'Human in control' : 'Agents allowed';
-        const t = document.getElementById('toggle');
-        t.className = 'btn ' + (isHuman ? 'btn-allow' : 'btn-takeover');
-        t.textContent = isHuman ? 'Allow agents' : 'Take over';
-        const l = document.getElementById('lease');
-        l.hidden = !d.lease; if (d.lease) { l.className = 'badge lease'; l.textContent = 'Lease: ' + d.lease.holder; }
-        const dl = document.getElementById('dialog');
-        dl.hidden = !(d.dialog && !d.dialog.auto_handled); if (!dl.hidden) dl.textContent = 'Dialog: ' + d.dialog.type;
-        const u = document.getElementById('url');
-        if (d.url && document.activeElement !== u) u.value = d.url;
-      } catch (e) { mode.className = 'badge err'; mode.textContent = 'archd unreachable'; }
+        const res = await fetch(path, { method: 'POST', headers: apiHeaders(true), body: JSON.stringify(body) });
+        const data = await res.json().catch(() => ({}));
+        refreshStatus();
+        return data;
+      } catch (err) {
+        console.error('API Error:', path, err);
+        return { ok: false, error: String(err) };
+      }
     }
-    function toggle() { post(isHuman ? '/api/release' : '/api/takeover'); }
-    function go() { const url = document.getElementById('url').value.trim(); if (url) post('/api/goto', {url}); }
-    setInterval(refresh, 3000); refresh();
+
+    window.apiPost = apiPost;
+
+    // --- State & Coordinates ---
+    let isHuman = false;
+    let rfbClient = null;
+    let canvasEl = null;
+    let desktopWidth = 1280, desktopHeight = 800;
+    let cursorX = 640, cursorY = 400;
+    let domElementsCache = [];
+
+    // --- RFB WebSocket Connection (Native noVNC direct embed) ---
+    const screenMount = document.getElementById('screenMount');
+    const connDot = document.getElementById('connDot');
+    const remoteCursor = document.getElementById('remoteCursor');
+
+    async function initVnc() {
+      const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${wsProtocol}//${location.host}/websockify${token ? '?token=' + encodeURIComponent(token) : ''}`;
+
+      try {
+        const { default: RFB } = await import('/novnc/core/rfb.js');
+        rfbClient = new RFB(screenMount, wsUrl, { credentials: { password: '' } });
+        rfbClient.scaleViewport = true;
+        rfbClient.resizeSession = false;
+
+        rfbClient.addEventListener('connect', () => {
+          connDot.className = 'brand-dot connected';
+          remoteCursor.classList.add('visible');
+          updateCursorVisual();
+          findCanvas();
+        });
+
+        rfbClient.addEventListener('disconnect', (e) => {
+          connDot.className = 'brand-dot error';
+          setTimeout(initVnc, 3000);
+        });
+
+        rfbClient.addEventListener('capabilities', (e) => {
+          findCanvas();
+        });
+      } catch (err) {
+        console.warn('Native RFB module load failed; falling back to iframe mode', err);
+        mountFallbackIframe();
+      }
+    }
+
+    function mountFallbackIframe() {
+      const iframe = document.getElementById('fallbackIframe');
+      iframe.style.display = 'block';
+      iframe.src = `/novnc/vnc_lite.html?autoconnect=true&resize=scale&reconnect=true&path=websockify${token ? '&token=' + encodeURIComponent(token) : ''}`;
+      connDot.className = 'brand-dot connected';
+      remoteCursor.classList.add('visible');
+    }
+
+    function findCanvas() {
+      canvasEl = screenMount.querySelector('canvas');
+      if (canvasEl) {
+        desktopWidth = canvasEl.width || 1280;
+        desktopHeight = canvasEl.height || 800;
+      }
+    }
+
+    // --- Pointer & Virtual Cursor ---
+    function updateCursorVisual() {
+      if (!canvasEl) findCanvas();
+      if (!canvasEl) return;
+      const rect = canvasEl.getBoundingClientRect();
+      const screenX = rect.left + (cursorX / desktopWidth) * rect.width;
+      const screenY = rect.top + (cursorY / desktopHeight) * rect.height;
+      remoteCursor.style.transform = `translate3d(${screenX}px, ${screenY}px, 0)`;
+    }
+
+    function setCursorPosition(x, y, sendRfb = true) {
+      cursorX = Math.max(0, Math.min(desktopWidth - 1, Math.round(x)));
+      cursorY = Math.max(0, Math.min(desktopHeight - 1, Math.round(y)));
+      updateCursorVisual();
+      if (sendRfb && rfbClient) {
+        rfbClient.sendPointerEvent(cursorX, cursorY, 0);
+      }
+    }
+
+    window.addEventListener('resize', () => {
+      findCanvas();
+      updateCursorVisual();
+    });
+
+    // --- Analog Stick (Virtual Joystick) ---
+    const joystickWrapper = document.getElementById('joystickWrapper');
+    const joystickKnob = document.getElementById('joystickKnob');
+    let joystickActive = false;
+    let joystickTouchId = null;
+    let joyStartX = 0, joyStartY = 0;
+    let joyVx = 0, joyVy = 0;
+    let joyAnimFrame = null;
+    const maxRadius = 40;
+
+    function handleJoyStart(clientX, clientY, id = null) {
+      joystickActive = true;
+      joystickTouchId = id;
+      const rect = joystickWrapper.getBoundingClientRect();
+      joyStartX = rect.left + rect.width / 2;
+      joyStartY = rect.top + rect.height / 2;
+      joystickWrapper.classList.add('active');
+      handleJoyMove(clientX, clientY);
+      if (!joyAnimFrame) joyAnimFrame = requestAnimationFrame(joyLoop);
+    }
+
+    function handleJoyMove(clientX, clientY) {
+      if (!joystickActive) return;
+      let dx = clientX - joyStartX;
+      let dy = clientY - joyStartY;
+      const dist = Math.hypot(dx, dy);
+
+      if (dist > maxRadius) {
+        dx = (dx / dist) * maxRadius;
+        dy = (dy / dist) * maxRadius;
+      }
+
+      joystickKnob.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
+
+      // Normalized magnitude with quadratic acceleration curve
+      const norm = Math.min(1, dist / maxRadius);
+      if (norm > 0.08) {
+        const speed = (60 + 580 * (norm * norm));
+        joyVx = (dx / dist) * speed * norm;
+        joyVy = (dy / dist) * speed * norm;
+      } else {
+        joyVx = 0;
+        joyVy = 0;
+      }
+    }
+
+    function handleJoyEnd() {
+      joystickActive = false;
+      joystickTouchId = null;
+      joyVx = 0;
+      joyVy = 0;
+      joystickKnob.style.transform = `translate3d(0, 0, 0)`;
+      joystickWrapper.classList.remove('active');
+    }
+
+    let lastLoopTime = performance.now();
+    function joyLoop(now) {
+      const dt = Math.min(0.05, (now - lastLoopTime) / 1000);
+      lastLoopTime = now;
+
+      if (joyVx || joyVy) {
+        setCursorPosition(cursorX + joyVx * dt, cursorY + joyVy * dt, true);
+      }
+
+      if (joystickActive || joyVx || joyVy) {
+        joyAnimFrame = requestAnimationFrame(joyLoop);
+      } else {
+        joyAnimFrame = null;
+      }
+    }
+
+    // Touch events for Joystick
+    joystickWrapper.addEventListener('touchstart', (e) => {
+      const touch = e.changedTouches[0];
+      if (touch) handleJoyStart(touch.clientX, touch.clientY, touch.identifier);
+      e.preventDefault();
+    }, { passive: false });
+
+    window.addEventListener('touchmove', (e) => {
+      if (!joystickActive) return;
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === joystickTouchId) {
+          handleJoyMove(e.changedTouches[i].clientX, e.changedTouches[i].clientY);
+          break;
+        }
+      }
+    }, { passive: true });
+
+    window.addEventListener('touchend', (e) => {
+      if (!joystickActive) return;
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === joystickTouchId) {
+          handleJoyEnd();
+          break;
+        }
+      }
+    });
+
+    // Mouse events for Joystick (desktop testing)
+    joystickWrapper.addEventListener('mousedown', (e) => {
+      handleJoyStart(e.clientX, e.clientY);
+      const onMove = (ev) => handleJoyMove(ev.clientX, ev.clientY);
+      const onUp = () => {
+        handleJoyEnd();
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+      };
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    });
+
+    // --- Tactile Scroll Wheel Strip ---
+    const scrollTrack = document.getElementById('scrollTrack');
+    let scrollDragActive = false;
+    let scrollStartY = 0;
+    let scrollAccum = 0;
+
+    function handleScrollMove(deltaY) {
+      scrollAccum += deltaY;
+      if (Math.abs(scrollAccum) >= 18) {
+        const dir = scrollAccum > 0 ? 'down' : 'up';
+        sendScroll(dir, 120);
+        scrollAccum = 0;
+      }
+    }
+
+    scrollTrack.addEventListener('touchstart', (e) => {
+      scrollDragActive = true;
+      scrollStartY = e.touches[0].clientY;
+      scrollTrack.classList.add('active');
+      e.preventDefault();
+    }, { passive: false });
+
+    window.addEventListener('touchmove', (e) => {
+      if (!scrollDragActive) return;
+      const curY = e.touches[0].clientY;
+      handleScrollMove(curY - scrollStartY);
+      scrollStartY = curY;
+    }, { passive: true });
+
+    window.addEventListener('touchend', () => {
+      scrollDragActive = false;
+      scrollTrack.classList.remove('active');
+    });
+
+    scrollTrack.addEventListener('mousedown', (e) => {
+      scrollDragActive = true;
+      scrollStartY = e.clientY;
+      scrollTrack.classList.add('active');
+      const onMove = (ev) => {
+        handleScrollMove(ev.clientY - scrollStartY);
+        scrollStartY = ev.clientY;
+      };
+      const onUp = () => {
+        scrollDragActive = false;
+        scrollTrack.classList.remove('active');
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+      };
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    });
+
+    function sendScroll(direction, amount = 160) {
+      if (navigator.vibrate) navigator.vibrate(6);
+      if (rfbClient) {
+        // mask 8 = wheel up, 16 = wheel down
+        const mask = direction === 'up' ? 8 : 16;
+        rfbClient.sendPointerEvent(cursorX, cursorY, mask);
+        setTimeout(() => rfbClient.sendPointerEvent(cursorX, cursorY, 0), 20);
+      } else {
+        apiPost('/api/scroll', { direction, amount });
+      }
+    }
+    window.sendScroll = sendScroll;
+
+    // --- Left & Right Click Cluster ---
+    const btnLeft = document.getElementById('btnLeftClick');
+    const btnRight = document.getElementById('btnRightClick');
+
+    function dispatchClick(buttonMask, apiBtnName) {
+      if (navigator.vibrate) navigator.vibrate(10);
+      if (rfbClient) {
+        rfbClient.sendPointerEvent(cursorX, cursorY, buttonMask);
+        setTimeout(() => rfbClient.sendPointerEvent(cursorX, cursorY, 0), 40);
+      } else {
+        apiPost('/api/mouse/click', { x: cursorX, y: cursorY, button: apiBtnName });
+      }
+    }
+
+    btnLeft.addEventListener('pointerdown', (e) => {
+      btnLeft.classList.add('active');
+      dispatchClick(1, 'left');
+      e.preventDefault();
+    });
+    btnLeft.addEventListener('pointerup', () => btnLeft.classList.remove('active'));
+
+    btnRight.addEventListener('pointerdown', (e) => {
+      btnRight.classList.add('active');
+      dispatchClick(4, 'right');
+      e.preventDefault();
+    });
+    btnRight.addEventListener('pointerup', () => btnRight.classList.remove('active'));
+
+    // --- HUD Visibility Toggle ---
+    const controlHud = document.getElementById('controlHud');
+    const hudPillText = document.getElementById('hudPillText');
+    const btnToggleHud = document.getElementById('btnToggleHud');
+    let hudVisible = localStorage.getItem('archHudVisible') !== 'false';
+
+    function applyHudState() {
+      if (hudVisible) {
+        controlHud.classList.remove('hidden');
+        hudPillText.textContent = 'Hide Controls';
+        btnToggleHud.classList.add('active');
+      } else {
+        controlHud.classList.add('hidden');
+        hudPillText.textContent = 'Show Controls';
+        btnToggleHud.classList.remove('active');
+      }
+      localStorage.setItem('archHudVisible', String(hudVisible));
+    }
+
+    window.toggleHud = function() {
+      hudVisible = !hudVisible;
+      applyHudState();
+    };
+
+    // --- Cockpit Drawer Toggle ---
+    const cockpitPane = document.getElementById('cockpitPane');
+    const btnToggleCockpit = document.getElementById('btnToggleCockpit');
+    let cockpitOpen = localStorage.getItem('archCockpitOpen') === 'true';
+
+    function applyCockpitState() {
+      if (cockpitOpen) {
+        cockpitPane.classList.remove('collapsed');
+        btnToggleCockpit.classList.add('active');
+      } else {
+        cockpitPane.classList.add('collapsed');
+        btnToggleCockpit.classList.remove('active');
+      }
+      localStorage.setItem('archCockpitOpen', String(cockpitOpen));
+      setTimeout(() => { findCanvas(); updateCursorVisual(); }, 320);
+    }
+
+    window.toggleCockpit = function() {
+      cockpitOpen = !cockpitOpen;
+      applyCockpitState();
+    };
+
+    // --- Cockpit Tabs ---
+    window.switchTab = function(name) {
+      document.querySelectorAll('.cockpit-tab').forEach((t, i) => {
+        const match = t.textContent.toLowerCase().includes(name);
+        t.classList.toggle('active', match);
+      });
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      const active = document.getElementById('panel' + name.charAt(0).toUpperCase() + name.slice(1));
+      if (active) active.classList.add('active');
+      if (name === 'dom') refreshDom();
+      if (name === 'tabs') refreshTabs();
+    };
+
+    // --- Takeover Toggle ---
+    window.toggleTakeover = function() {
+      apiPost(isHuman ? '/api/release' : '/api/takeover');
+    };
+
+    // --- Navigation ---
+    window.navigateUrl = function() {
+      const val = document.getElementById('urlInput').value.trim();
+      if (val) apiPost('/api/goto', { url: val });
+    };
+
+    window.captureScreenshot = function() {
+      window.open('/api/screenshot' + (token ? '?token=' + encodeURIComponent(token) : ''), '_blank');
+    };
+
+    // --- Status Refresh Loop ---
+    async function refreshStatus() {
+      try {
+        const res = await fetch('/api/status', { headers: apiHeaders(false) });
+        if (res.status === 401) {
+          document.getElementById('modeBadge').className = 'badge human';
+          document.getElementById('modeBadge').textContent = 'Token required (#token=...)';
+          return;
+        }
+        const st = await res.json();
+        isHuman = !!st.owner_takeover;
+
+        // Mode badge & toggle button
+        const mb = document.getElementById('modeBadge');
+        mb.className = 'badge ' + (isHuman ? 'human' : 'agent');
+        mb.textContent = isHuman ? 'Human Takeover' : 'Agents Allowed';
+
+        const btnT = document.getElementById('btnTakeover');
+        btnT.className = 'btn btn-takeover ' + (isHuman ? 'active' : '');
+        btnT.textContent = isHuman ? 'Release' : 'Take over';
+
+        // Lease badge
+        const lb = document.getElementById('leaseBadge');
+        if (st.lease) {
+          lb.style.display = 'inline-flex';
+          lb.textContent = `Lease: ${st.lease.holder}`;
+        } else {
+          lb.style.display = 'none';
+        }
+
+        // Omnibox URL
+        const uIn = document.getElementById('urlInput');
+        if (st.url && document.activeElement !== uIn) {
+          uIn.value = st.url;
+        }
+
+        // Router JSON preview
+        if (st.tiers) {
+          document.getElementById('routerStatusPre').textContent = JSON.stringify(st.tiers, null, 2);
+        }
+      } catch (_) {}
+    }
+
+    // --- Autonomous Task Runner ---
+    window.runTask = async function() {
+      const goal = document.getElementById('taskGoal').value.trim();
+      if (!goal) return;
+
+      const btn = document.getElementById('btnRunTask');
+      const status = document.getElementById('taskStatus');
+      const list = document.getElementById('taskStepList');
+      const badge = document.getElementById('stepCountBadge');
+
+      btn.disabled = true;
+      status.textContent = 'Running autonomous loop...';
+      list.innerHTML = '<p style="font-size:11.5px;color:var(--accent)">Task dispatched. Executing steps...</p>';
+
+      const res = await apiPost('/api/task', { goal, max_steps: 12 });
+      btn.disabled = false;
+
+      if (!res.ok) {
+        status.textContent = 'Failed: ' + (res.error || 'unknown');
+        list.innerHTML = `<p style="color:var(--danger)">Error: ${res.error || 'Failed'}</p>`;
+        return;
+      }
+
+      status.textContent = res.done ? 'Goal Completed!' : (res.reason || 'Stopped');
+      const steps = res.history || [];
+      badge.textContent = steps.length;
+
+      if (!steps.length) {
+        list.innerHTML = '<p style="font-size:11.5px;color:var(--muted)">Task completed in 0 steps.</p>';
+        return;
+      }
+
+      list.innerHTML = steps.map(s => {
+        const plan = s.plan || {};
+        const resStep = s.result || {};
+        const isOk = resStep.ok !== false;
+        return `
+          <div class="step-item">
+            <div class="step-item-head">
+              <span style="color:${isOk ? 'var(--accent)' : 'var(--danger)'}">Step ${s.step}: ${plan.action || 'action'}</span>
+              <span style="color:var(--muted)">${plan.model || 'rules'}</span>
+            </div>
+            ${plan.thought ? `<div class="step-item-thought">${plan.thought}</div>` : ''}
+            <div class="step-meta">
+              <span>Latency: ${plan.latency_ms || 0}ms</span>
+              <span>Cost: $${(plan.usage && plan.usage.cost) ? plan.usage.cost.toFixed(4) : '0.00'}</span>
+              <span>Status: ${isOk ? 'OK' : 'Error: ' + resStep.error}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    };
+
+    // --- DOM Tree Panel ---
+    window.refreshDom = async function() {
+      const list = document.getElementById('domList');
+      list.innerHTML = '<p style="font-size:11.5px;color:var(--muted)">Fetching DOM...</p>';
+      const res = await fetch('/api/dom', { headers: apiHeaders(false) }).then(r => r.json()).catch(() => ({}));
+      domElementsCache = res.elements || [];
+      document.getElementById('domCount').textContent = domElementsCache.length;
+      renderDom(domElementsCache);
+    };
+
+    function renderDom(nodes) {
+      const list = document.getElementById('domList');
+      if (!nodes.length) {
+        list.innerHTML = '<p style="font-size:11.5px;color:var(--muted)">No interactive elements found.</p>';
+        return;
+      }
+      list.innerHTML = nodes.slice(0, 150).map(el => `
+        <div class="dom-node">
+          <div class="dom-node-left">
+            <span class="dom-index">#${el.index}</span>
+            <span class="dom-name" title="${el.name || el.role}"><strong>&lt;${el.role}&gt;</strong> ${el.name || el.value || '(unnamed)'}</span>
+          </div>
+          <button class="dom-btn" onclick="clickIndex(${el.index})">Click</button>
+        </div>
+      `).join('');
+    }
+
+    window.clickIndex = function(idx) {
+      apiPost('/api/click', { index: idx });
+    };
+
+    window.filterDom = function() {
+      const q = document.getElementById('domSearch').value.toLowerCase();
+      const filtered = domElementsCache.filter(el =>
+        String(el.index).includes(q) ||
+        (el.role && el.role.toLowerCase().includes(q)) ||
+        (el.name && el.name.toLowerCase().includes(q))
+      );
+      renderDom(filtered);
+    };
+
+    // --- Tabs Panel ---
+    window.refreshTabs = async function() {
+      const list = document.getElementById('tabsList');
+      const res = await fetch('/api/tabs', { headers: apiHeaders(false) }).then(r => r.json()).catch(() => ({}));
+      const tabs = res.tabs || [];
+      list.innerHTML = tabs.map(t => `
+        <div class="tab-row ${t.active ? 'active' : ''}" onclick="switchTabId('${t.id}')">
+          <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+            <strong>${t.title || 'Untitled'}</strong>
+            <div style="font-size:10.5px;color:var(--muted)">${t.url}</div>
+          </div>
+          ${t.active ? '<span class="badge agent">Active</span>' : ''}
+        </div>
+      `).join('');
+    };
+
+    window.switchTabId = function(id) {
+      apiPost('/api/tabs/switch', { id });
+      setTimeout(refreshTabs, 400);
+    };
+
+    window.newTab = function() {
+      const url = prompt('Enter URL for new tab:', 'https://google.com');
+      if (url) apiPost('/api/tabs/new', { url });
+    };
+
+    // Boot
+    applyHudState();
+    applyCockpitState();
+    initVnc();
+    setInterval(refreshStatus, 2500);
+    refreshStatus();
   </script>
 </body>
 </html>

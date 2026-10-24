@@ -19,7 +19,9 @@ Security posture (fail-closed):
 import base64
 import hmac
 import json
+import mimetypes
 import os
+import select
 import socket
 import threading
 import time
@@ -357,6 +359,20 @@ class CDPDriver:
         return {"ok": True, "selector": selector, "point": {"x": x, "y": y}, "url_before": before,
                 "url_after": after.get("url"), "navigated": after.get("url") != before, "dialog": after.get("dialog")}
 
+    def mouse_click(self, x: float, y: float, button: str = "left") -> Dict[str, Any]:
+        btn = "right" if button in ("right", "secondary") else "left"
+        ix, iy = round(x), round(y)
+        self.call("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": ix, "y": iy})
+        self.call("Input.dispatchMouseEvent", {"type": "mousePressed", "x": ix, "y": iy, "button": btn, "clickCount": 1})
+        time.sleep(0.04)
+        self.call("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": ix, "y": iy, "button": btn, "clickCount": 1})
+        return {"ok": True, "point": {"x": ix, "y": iy}, "button": btn}
+
+    def mouse_move(self, x: float, y: float) -> Dict[str, Any]:
+        ix, iy = round(x), round(y)
+        self.call("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": ix, "y": iy})
+        return {"ok": True, "point": {"x": ix, "y": iy}}
+
     def fill(self, selector: str, text: str) -> Dict[str, Any]:
         sel = normalize_selector(selector)
         js = f"""(() => {{
@@ -589,10 +605,54 @@ class ArchHandler(BaseHTTPRequestHandler):
             return None
 
     def _authed(self) -> bool:
-        if token_ok(TOKEN, self.headers.get("Authorization")):
+        auth_hdr = self.headers.get("Authorization")
+        if not auth_hdr:
+            qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            token_q = qs.get("token", [None])[0]
+            if token_q:
+                auth_hdr = f"Bearer {token_q}"
+        if token_ok(TOKEN, auth_hdr):
             return True
         self._send_json(401, {"ok": False, "error": "unauthorized"})
         return False
+
+    def _proxy_websocket(self):
+        if not self._authed():
+            return
+        vnc_port = int(os.environ.get("VNC_PORT", 6080))
+        try:
+            sock = socket.create_connection(("127.0.0.1", vnc_port), timeout=10)
+        except Exception as e:
+            return self._send_json(502, {"ok": False, "error": f"vnc bridge unavailable: {e}"})
+
+        try:
+            req_line = f"{self.command} {self.path} {self.request_version}\r\n"
+            sock.sendall(req_line.encode("latin-1"))
+            for k, v in self.headers.items():
+                sock.sendall(f"{k}: {v}\r\n".encode("latin-1"))
+            sock.sendall(b"\r\n")
+
+            self.close_connection = True
+            client_sock = self.connection
+            backend_sock = sock
+            conns = [client_sock, backend_sock]
+            while True:
+                r, _, x = select.select(conns, [], conns, 60)
+                if x or not r:
+                    break
+                for s in r:
+                    other = backend_sock if s is client_sock else client_sock
+                    data = s.recv(65536)
+                    if not data:
+                        return
+                    other.sendall(data)
+        except (socket.error, ConnectionResetError, BrokenPipeError):
+            pass
+        finally:
+            try:
+                sock.close()
+            except Exception:
+                pass
 
     def _actor(self) -> str:
         return "owner" if self.headers.get("X-Arch-Actor") == "owner" else "agent"
@@ -608,14 +668,21 @@ class ArchHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self._safe(self._get)
 
+    def do_HEAD(self):
+        self._safe(self._get)
+
     def do_POST(self):
         self._safe(self._post)
 
     def _get(self):
         path = urllib.parse.urlparse(self.path).path
+        if self.headers.get("Upgrade", "").lower() == "websocket" or path == "/websockify":
+            return self._proxy_websocket()
+
         if path == "/healthz":
             return self._send_json(200, {"ok": True, "service": "archd", "version": VERSION})
-        if path in ("/", "/index.html"):
+
+        if path in ("/", "/index.html", "/ui"):
             ui_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui", "index.html")
             with open(ui_path, "rb") as f:
                 content = f.read()
@@ -625,6 +692,50 @@ class ArchHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(content)
             return
+
+        if path.startswith("/novnc/"):
+            rel = path[len("/novnc/"):].lstrip("/")
+            base = os.path.abspath(os.environ.get("NOVNC_DIR", "/usr/share/novnc"))
+            target = os.path.abspath(os.path.join(base, rel))
+            if os.path.commonpath([base, target]) == base and os.path.isfile(target):
+                mime, _ = mimetypes.guess_type(target)
+                if target.endswith(".js") or target.endswith(".mjs"):
+                    mime = "application/javascript"
+                elif target.endswith(".css"):
+                    mime = "text/css"
+                elif target.endswith(".html"):
+                    mime = "text/html"
+                with open(target, "rb") as f:
+                    content = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", mime or "application/octet-stream")
+                self.send_header("Content-Length", str(len(content)))
+                self.send_header("Cache-Control", "public, max-age=3600")
+                self.end_headers()
+                self.wfile.write(content)
+                return
+            return self._send_json(404, {"ok": False, "error": "novnc file not found"})
+
+        if path.startswith("/ui/"):
+            rel = path[len("/ui/"):].lstrip("/")
+            base = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui"))
+            target = os.path.abspath(os.path.join(base, rel))
+            if os.path.commonpath([base, target]) == base and os.path.isfile(target):
+                mime, _ = mimetypes.guess_type(target)
+                if target.endswith(".js"):
+                    mime = "application/javascript"
+                elif target.endswith(".css"):
+                    mime = "text/css"
+                with open(target, "rb") as f:
+                    content = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", mime or "application/octet-stream")
+                self.send_header("Content-Length", str(len(content)))
+                self.end_headers()
+                self.wfile.write(content)
+                return
+            return self._send_json(404, {"ok": False, "error": "file not found"})
+
         if not self._authed():
             return
         if path == "/api/status":
@@ -713,6 +824,10 @@ class ArchHandler(BaseHTTPRequestHandler):
             return reply(DRIVER.new_tab(body.get("url", "about:blank")))
         if path == "/api/tabs/switch":
             return reply(DRIVER.switch_tab(str(body.get("id", ""))))
+        if path == "/api/mouse/click":
+            return reply(DRIVER.mouse_click(float(body.get("x", 0)), float(body.get("y", 0)), str(body.get("button", "left"))))
+        if path == "/api/mouse/move":
+            return reply(DRIVER.mouse_move(float(body.get("x", 0)), float(body.get("y", 0))))
         if path == "/api/task":
             return self._run_task(body)
         self._send_json(404, {"ok": False, "error": "Not found"})
